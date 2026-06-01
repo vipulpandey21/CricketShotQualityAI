@@ -1,178 +1,238 @@
-import streamlit as st
-import cv2
-import numpy as np
-import tensorflow as tf
-from tensorflow.keras import models, layers
-from tensorflow.keras.applications import EfficientNetB0
+"""
+app.py
+Streamlit app — Cricket Shot Quality Analyser
+Extends the original CricketShotClassification repo with:
+  • Pose estimation (MediaPipe)
+  • Biomechanical quality scoring
+  • Feature-based similarity scoring vs a reference video
+"""
+
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+
 import tempfile
 import shutil
 
-# Load pre-trained EfficientNetB0 without the top layer to use as a feature extractor
-st.set_page_config(layout="wide")
+import cv2
+import numpy as np
+import streamlit as st
 
-# Define class labels
-classes = {'cover': 0, 'defense': 1, 'flick': 2, 'hook': 3, 'late_cut': 4, 'lofted': 5, 'pull': 6, 'square_cut': 7, 'straight': 8, 'sweep': 9}
+from src.utils.video_utils import extract_frames, extract_raw_frames
+from src.classifier.model import load_classifier, predict_shot, get_feature_extractor, cosine_similarity
+from src.quality.scorer import ShotQualityScorer
 
-# Function to load the model
-def load_model(weights_path):
-    base_model = EfficientNetB0(include_top=False, weights='imagenet', input_shape=(224, 224, 3))
+# ── MediaPipe is optional — gracefully degrade if not installed ──────────────
+try:
+    from src.pose.estimator import PoseEstimator, aggregate_keypoints
+    POSE_AVAILABLE = True
+except ImportError:
+    POSE_AVAILABLE = False
 
-# Set the base model as non-trainable
-    base_model.trainable = False
+# ── Page config ──────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Cricket Shot Quality Analyser",
+    page_icon="🏏",
+    layout="wide",
+)
 
-# Define the full model using a Sequential model
-    model = models.Sequential([
-    # Apply EfficientNetB0 to each frame of the video
-        layers.TimeDistributed(base_model, input_shape=(None, 224, 224, 3)),
-        layers.TimeDistributed(layers.GlobalAveragePooling2D()),
+# ── Constants ─────────────────────────────────────────────────────────────────
+WEIGHTS_PATH = "model_weights.h5"
+N_FRAMES = 30
+SCORER = ShotQualityScorer(pose_weight=0.6, similarity_weight=0.4)
 
-    # Use GRU layers to capture temporal relationships
-        layers.GRU(256, return_sequences=True),
-        layers.GRU(128),
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-    # Dense layers for classification
-        layers.Dense(1024, activation='relu'),
-        layers.Dropout(0.5),
-        layers.Dense(10, activation='softmax')
-    ])
-    model.load_weights(weights_path)
-    return model
+def save_upload(uploaded_file) -> str:
+    """Save a Streamlit UploadedFile to a temp path and return the path."""
+    suffix = "." + uploaded_file.name.split(".")[-1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(uploaded_file, tmp)
+        return tmp.name
 
-def format_frames(frame, output_size):
-  """
-    Pad and resize an image from a video.
 
-    Args:
-      frame: Image that needs to resized and padded.
-      output_size: Pixel size of the output frame image.
+@st.cache_resource(show_spinner="Loading classification model…")
+def get_model():
+    return load_classifier(WEIGHTS_PATH)
 
-    Return:
-      Formatted frame with padding of specified output size.
-  """
-  frame = tf.image.convert_image_dtype(frame, tf.uint8)
-  frame = tf.image.resize_with_pad(frame, *output_size)
-  return frame.numpy()
 
-def frames_from_video_file(video_path, n_frames, output_size=(224, 224), frame_step=1):
-    """
-    Extracts frames sequentially from the start of the video file, with a specified step between frames.
+def render_score_bar(label: str, score: float, color: str = "#4CAF50"):
+    """Render a labelled progress bar for a score."""
+    st.markdown(
+        f"""
+        <div style="margin-bottom:6px">
+            <span style="font-size:0.85rem;font-weight:600">{label}</span>
+            <span style="float:right;font-size:0.85rem">{score:.1f}/100</span>
+        </div>
+        <div style="background:#e0e0e0;border-radius:6px;height:12px;margin-bottom:12px">
+            <div style="width:{score}%;background:{color};height:12px;border-radius:6px"></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    Args:
-      video_path: File path to the video.
-      n_frames: Number of frames to be created per video file.
-      output_size: Pixel size of the output frame image (height, width).
-      frame_step: Number of frames to skip between extracted frames.
 
-    Returns:
-      A NumPy array of frames in the shape of (n_frames, height, width, channels).
-    """
-    result = []
-    src = cv2.VideoCapture(str(video_path))
+def grade_color(grade: str) -> str:
+    return {
+        "Excellent": "#2e7d32",
+        "Good":      "#1565c0",
+        "Average":   "#f57f17",
+        "Needs Work":"#b71c1c",
+    }.get(grade, "#555")
 
-    src.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Start from the first frame
 
-    # Attempt to read the first frame
-    ret, frame = src.read()
-    if ret:
-        frame = format_frames(frame, output_size)
-        result.append(frame)
-    else:
-        # If the first frame can't be read, append a zero frame and exit
-        result.append(np.zeros((output_size[0], output_size[1], 3), dtype=np.uint8))
+# ── UI ────────────────────────────────────────────────────────────────────────
 
-    # Read subsequent frames with the specified frame_step
-    for _ in range(n_frames - 1):
-        for _ in range(frame_step):
-            ret, frame = src.read()
-        if ret:
-            frame = format_frames(frame, output_size)
-            result.append(frame)
+st.title("🏏 Cricket Shot Quality Analyser")
+st.caption(
+    "Upload a batting video to classify the shot, analyse biomechanical quality "
+    "using pose estimation, and optionally compare against a reference video."
+)
+
+if not POSE_AVAILABLE:
+    st.warning(
+        "⚠️ **MediaPipe not installed** — pose-based scoring is disabled. "
+        "Install it with `pip install mediapipe==0.10.14` to enable full quality analysis."
+    )
+
+model = get_model()
+feature_extractor = get_feature_extractor(model)
+
+# ── Two-column layout ─────────────────────────────────────────────────────────
+col_player, col_ref = st.columns(2)
+
+with col_player:
+    st.subheader("Player Video")
+    player_upload = st.file_uploader(
+        "Upload the player's shot video", type=["mp4", "avi", "mov"], key="player"
+    )
+
+with col_ref:
+    st.subheader("Reference Video (optional)")
+    ref_upload = st.file_uploader(
+        "Upload a reference / ideal shot video for comparison",
+        type=["mp4", "avi", "mov"],
+        key="reference",
+    )
+
+# ── Analysis ──────────────────────────────────────────────────────────────────
+if player_upload:
+    player_path = save_upload(player_upload)
+
+    with col_player:
+        st.video(player_upload)
+
+    with st.spinner("Classifying shot…"):
+        player_frames = extract_frames(player_path, N_FRAMES)
+        shot_name, confidence = predict_shot(model, player_frames)
+
+    st.markdown("---")
+    st.subheader(f"Shot Detected: **{shot_name.replace('_', ' ').title()}**  —  confidence {confidence:.1f}%")
+
+    # ── Pose analysis ─────────────────────────────────────────────────────────
+    avg_kp = {}
+    pose_annotated_frame = None
+
+    if POSE_AVAILABLE:
+        with st.spinner("Running pose estimation…"):
+            estimator = PoseEstimator()
+            raw_frames = extract_raw_frames(player_path, max_frames=60)
+            kp_per_frame = estimator.process_frames(raw_frames)
+            avg_kp = aggregate_keypoints(kp_per_frame)
+
+            # Annotate the middle frame for display
+            mid = len(raw_frames) // 2
+            if kp_per_frame[mid] is not None:
+                pose_annotated_frame = estimator.draw_landmarks(
+                    raw_frames[mid], kp_per_frame[mid]
+                )
+
+    # ── Similarity vs reference ───────────────────────────────────────────────
+    similarity = -1.0
+    ref_shot_name = None
+
+    if ref_upload:
+        ref_path = save_upload(ref_upload)
+
+        with col_ref:
+            st.video(ref_upload)
+
+        with st.spinner("Analysing reference video…"):
+            ref_frames = extract_frames(ref_path, N_FRAMES)
+            ref_shot_name, ref_conf = predict_shot(model, ref_frames)
+
+            p_feat = feature_extractor.predict(
+                np.expand_dims(player_frames, axis=0), verbose=0
+            )
+            r_feat = feature_extractor.predict(
+                np.expand_dims(ref_frames, axis=0), verbose=0
+            )
+            similarity = cosine_similarity(p_feat, r_feat)
+
+    # ── Score ─────────────────────────────────────────────────────────────────
+    feedback = SCORER.score(shot_name, avg_kp, similarity)
+
+    # ── Results layout ────────────────────────────────────────────────────────
+    res_col1, res_col2 = st.columns([1, 1])
+
+    with res_col1:
+        grade_col = grade_color(feedback.grade)
+        st.markdown(
+            f"""
+            <div style="text-align:center;padding:20px;border-radius:12px;
+                        background:#f5f5f5;margin-bottom:16px">
+                <div style="font-size:3rem;font-weight:800;color:{grade_col}">
+                    {feedback.final_score}
+                </div>
+                <div style="font-size:1.1rem;color:{grade_col};font-weight:600">
+                    {feedback.grade}
+                </div>
+                <div style="font-size:0.8rem;color:#777;margin-top:4px">Overall Quality Score</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        render_score_bar("Biomechanical Score", feedback.pose_score, "#1565c0")
+        if feedback.similarity_score >= 0:
+            render_score_bar("Similarity to Reference", feedback.similarity_score, "#6a1b9a")
+        render_score_bar("Final Score", feedback.final_score, grade_col)
+
+    with res_col2:
+        st.markdown("#### Criterion Breakdown")
+        for criterion, score in feedback.criteria.items():
+            color = "#4CAF50" if score >= 70 else ("#FF9800" if score >= 50 else "#f44336")
+            render_score_bar(criterion.replace("_", " ").title(), score, color)
+
+        if pose_annotated_frame is not None:
+            st.markdown("#### Pose Overlay")
+            rgb_annotated = cv2.cvtColor(pose_annotated_frame, cv2.COLOR_BGR2RGB)
+            st.image(rgb_annotated, caption="Pose keypoints on mid-frame", use_container_width=True)
+
+    # ── Feedback tips ─────────────────────────────────────────────────────────
+    st.markdown("#### 💡 Coaching Feedback")
+    for tip in feedback.feedback:
+        st.info(tip)
+
+    if ref_upload and ref_shot_name:
+        if ref_shot_name == shot_name:
+            st.success(
+                f"Reference video is also a **{ref_shot_name.replace('_',' ').title()}** "
+                f"— similarity score: **{feedback.similarity_score:.1f}%**"
+            )
         else:
-            # Append a zero-like frame if no more frames can be read
-            result.append(np.zeros_like(result[0]))
+            st.warning(
+                f"⚠️ Shot type mismatch — player played **{shot_name}**, "
+                f"reference is **{ref_shot_name}**. Similarity score may not be meaningful."
+            )
 
-    src.release()
-
-    # Convert the list of frames to a NumPy array and adjust color channels from BGR to RGB
-    result = np.array(result)[..., [2, 1, 0]]
-
-    return result
-
-# Function to classify video
-def classify_video(video_path, model, frame_count, class_labels):
-    # Process the video file to get the frames
-    frames = frames_from_video_file(video_path, frame_count)
-
-    # Add batch dimension if the model expects it
-    frames = np.expand_dims(frames, axis=0)
-
-    # Use the model to predict the class probabilities
-    predictions = model.predict(frames)
-    print("Raw predictions:", predictions)
-
-    # Convert predictions to class labels
-    predicted_class_idx = np.argmax(predictions, axis=1)[0]  # Get the index of the max class score
-    print("Predicted class index:", predicted_class_idx)
-    
-    # Get the class name using the predicted index
-    predicted_class_name = list(class_labels.keys())[list(class_labels.values()).index(predicted_class_idx)]
-    
-    # Calculate the confidence percentage of the predicted class
-    confidence = predictions[0][predicted_class_idx] * 100  # Assuming softmax output, multiply by 100 for percentage
-    print("Confidence (%): {:.2f}%".format(confidence))
-
-    return predicted_class_name, confidence
-
-# Streamlit user interface
-st.title('Cricket Shot Classification and Similarity Checker')
-
-# Load model 
-model = load_model('model_weights.h5')
-
-def save_uploaded_file(uploaded_file):
+    # ── Cleanup temp files ────────────────────────────────────────────────────
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.' + uploaded_file.name.split('.')[-1]) as tmpfile:
-            shutil.copyfileobj(uploaded_file, tmpfile)
-            tmp_path = tmpfile.name
-        return tmp_path
-    except Exception as e:
-        print(f"Error saving uploaded file to temp directory: {e}")
-        return None
+        os.unlink(player_path)
+        if ref_upload:
+            os.unlink(ref_path)
+    except Exception:
+        pass
 
-col1, col2 = st.columns(2)
-class1 = conf1 = class2 = conf2 = None
-
-with col1:
-    video1 = st.file_uploader("Upload first video", type=["mp4", "avi"], key="video1")
-    if video1:
-        st.video(video1)
-        video1_path = save_uploaded_file(video1)
-        class1, conf1 = classify_video(video1_path, model, 30, classes)
-        st.success(f"First video classified as {class1} with confidence {conf1:.2f}%")
-
-with col2:
-    video2 = st.file_uploader("Upload second video", type=["mp4", "avi", "move"], key="video2")
-    if video2:
-        st.video(video2)
-        video2_path = save_uploaded_file(video2)
-        class2, conf2 = classify_video(video2_path, model, 30, classes)
-        st.success(f"Second video classified as {class2} with confidence {conf2:.2f}%")
-
-if st.button('Compare Videos'):
-    if video1 is not None and video2 is not None and class1 == class2:
-        # Extract features for similarity check
-        feature_model = tf.keras.Model(inputs=model.input, outputs=model.layers[-3].output)
-        features1 = feature_model.predict(np.expand_dims(frames_from_video_file(video1_path, 30), axis=0))
-        features2 = feature_model.predict(np.expand_dims(frames_from_video_file(video2_path, 30), axis=0))
-        
-        # Compute cosine similarity
-        dot_product = np.dot(features1, features2.T)
-        norm1 = np.linalg.norm(features1)
-        norm2 = np.linalg.norm(features2)
-        similarity = dot_product / (norm1 * norm2)
-        
-        st.success(f"Similarity between videos: {similarity[0][0] * 100:.2f}%")
-    elif class1 is not None and class2 is not None and class1 != class2:
-        st.write("Videos are of different classes; similarity is not computed.")
-    else:
-        st.write("Please upload both videos to compare.")
+else:
+    st.info("👆 Upload a player video above to get started.")
