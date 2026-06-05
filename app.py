@@ -52,11 +52,12 @@ def load_model():
     return model
 
 
-@st.cache_resource(show_spinner="Building feature extractor…")
-def load_feature_extractor(_model):
-    """Sub-model that outputs the 1024-d Dense layer activations."""
-    _ = _model(np.zeros((1, 30, 224, 224, 3), dtype=np.float32), training=False)
-    return tf.keras.Model(inputs=_model.input, outputs=_model.layers[-3].output)
+def get_features(model, frames):
+    """Extract 1024-d feature vector for similarity comparison."""
+    batch = np.expand_dims(frames, axis=0)
+    _ = model(batch, training=False)   # builds the graph
+    feat_model = tf.keras.Model(inputs=model.input, outputs=model.layers[-3].output)
+    return feat_model.predict(batch, verbose=0)
 
 
 def predict(model, frames):
@@ -87,7 +88,6 @@ st.caption(
 )
 
 model = load_model()
-feat_extractor = load_feature_extractor(model)
 
 col1, col2 = st.columns(2)
 
@@ -138,7 +138,7 @@ if v1:
         if frames_kp[best_idx] is not None:
             annotated = draw_skeleton(raw_frames[best_idx], frames_kp[best_idx])
             annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-            st.image(annotated_rgb, caption="Skeleton overlay (best frame)", use_container_width=True)
+            st.image(annotated_rgb, caption="Skeleton overlay (best frame)", use_column_width=True)
         else:
             st.warning("No pose detected in any frame.")
 
@@ -182,8 +182,8 @@ if v1:
         with st.spinner("Classifying and comparing video 2…"):
             frames2 = extract_frames(p2, n_frames=30)
             shot2, conf2 = predict(model, frames2)
-            f1 = feat_extractor.predict(np.expand_dims(frames1, 0), verbose=0)
-            f2 = feat_extractor.predict(np.expand_dims(frames2, 0), verbose=0)
+            f1 = get_features(model, frames1)
+            f2 = get_features(model, frames2)
             sim = cosine_sim(f1, f2)
 
         col2.success(f"**{shot2.replace('_', ' ').title()}** — {conf2:.1f}% confident")
