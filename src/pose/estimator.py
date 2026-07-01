@@ -135,23 +135,20 @@ def draw_skeleton(bgr_frame: np.ndarray, keypoints: dict) -> np.ndarray:
     return annotated
 
 
-def aggregate_keypoints(frames_kp: list) -> dict:
+
+
+def aggregate_keypoints(frames_kp: list, vis_threshold: float = 0.3) -> dict:
     """
-    Average keypoint positions across all valid frames (visibility > 0.5).
-
-    Args:
-        frames_kp: Output of run_pose_on_frames.
-
-    Returns:
-        Dict mapping landmark_index → mean (x, y, z) as numpy array.
-        Empty dict if no valid frames at all.
+    Average keypoint positions across all valid frames.
+    Uses vis_threshold=0.3 (permissive) so partially occluded joints
+    like wrists and elbows are still included when detected.
     """
     accum: dict = {}
     for frame_kp in frames_kp:
         if frame_kp is None:
             continue
         for idx, (x, y, z, vis) in frame_kp.items():
-            if vis > 0.5:
+            if vis > vis_threshold:
                 accum.setdefault(idx, []).append([x, y, z])
 
     return {idx: np.mean(vals, axis=0) for idx, vals in accum.items()}
@@ -265,16 +262,22 @@ def compute_cricket_angles(avg_kp: dict) -> dict:
     else:
         result["hip_tilt_deg"] = None
 
-    # Trunk lean — angle of line from hip-midpoint to shoulder-midpoint from vertical
+    # Trunk lean — angle of torso from vertical
+    # In image coords: Y increases downward. Trunk vector = shoulder_mid - hip_mid
+    # points upward (negative Y). We measure angle from true vertical [0,-1].
+    # A perfectly upright trunk = 0°. Leaning forward = positive angle.
     if all(v is not None for v in [lshoulder, rshoulder, lhip, rhip]):
-        sh_mid = (np.array(lshoulder[:2]) + np.array(rshoulder[:2])) / 2
-        hp_mid = (np.array(lhip[:2]) + np.array(rhip[:2])) / 2
-        trunk = sh_mid - hp_mid  # vector pointing up (in image coords y is flipped)
-        # Angle from vertical (0,1) vector
-        vertical = np.array([0.0, -1.0])  # up in image coords
-        denom = np.linalg.norm(trunk) + 1e-8
-        cos_a = np.dot(trunk / denom, vertical)
-        result["trunk_lean_deg"] = round(math.degrees(math.acos(float(np.clip(cos_a, -1, 1)))), 1)
+        sh_mid = (np.array(lshoulder[:2]) + np.array(rshoulder[:2])) / 2.0
+        hp_mid = (np.array(lhip[:2])     + np.array(rhip[:2]))     / 2.0
+        trunk_vec = sh_mid - hp_mid   # points from hips toward shoulders
+
+        trunk_len = np.linalg.norm(trunk_vec) + 1e-8
+        trunk_unit = trunk_vec / trunk_len
+
+        # Vertical "up" in image coords is (0, -1)
+        vertical_up = np.array([0.0, -1.0])
+        cos_a = float(np.clip(np.dot(trunk_unit, vertical_up), -1.0, 1.0))
+        result["trunk_lean_deg"] = round(math.degrees(math.acos(cos_a)), 1)
     else:
         result["trunk_lean_deg"] = None
 

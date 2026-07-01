@@ -93,38 +93,34 @@ def _status(score: float) -> str:
         return "❌ Needs Work"
 
 
-# ── Shot-specific scoring functions ──────────────────────────────────────────
+def _fmt(angles: dict, key: str) -> str:
+    """Format an angle value for display — shows 'Not detected' if None."""
+    v = angles.get(key)
+    return f"{v}°" if v is not None else "Not detected"
+
 
 def _score_cover(angles: dict) -> list:
     criteria = []
 
     # Front knee: 130-155° (slight bend, not locked, not too deep)
     s = _score_angle(angles.get("front_knee_angle"), 130, 155)
-    criteria.append(CriterionResult(
-        "Front Knee Bend", "130°–155°",
-        f"{angles.get('front_knee_angle', 'N/A')}°", s, _status(s)
-    ))
+    actual_fk = f"{angles['front_knee_angle']}°" if angles.get("front_knee_angle") is not None else "Not detected"
+    criteria.append(CriterionResult("Front Knee Bend", "130°–155°", actual_fk, s, _status(s)))
 
     # Front elbow angle: 100-150° (elbow bent, bat coming through)
     s = _score_angle(angles.get("front_elbow_angle"), 100, 150)
-    criteria.append(CriterionResult(
-        "Lead Elbow Position", "100°–150°",
-        f"{angles.get('front_elbow_angle', 'N/A')}°", s, _status(s)
-    ))
+    actual_fe = f"{angles['front_elbow_angle']}°" if angles.get("front_elbow_angle") is not None else "Not detected"
+    criteria.append(CriterionResult("Lead Elbow Position", "100°–150°", actual_fe, s, _status(s)))
 
     # Shoulder tilt: keep low (<10°)
     s = _score_tilt(angles.get("shoulder_tilt_deg"), 10)
-    criteria.append(CriterionResult(
-        "Shoulder Alignment", "<10° tilt",
-        f"{angles.get('shoulder_tilt_deg', 'N/A')}°", s, _status(s)
-    ))
+    actual_st = f"{angles['shoulder_tilt_deg']}°" if angles.get("shoulder_tilt_deg") is not None else "Not detected"
+    criteria.append(CriterionResult("Shoulder Alignment", "<10° tilt", actual_st, s, _status(s)))
 
     # Trunk lean: slight forward lean 5-20°
     s = _score_angle(angles.get("trunk_lean_deg"), 5, 25)
-    criteria.append(CriterionResult(
-        "Body Lean (Forward)", "5°–25°",
-        f"{angles.get('trunk_lean_deg', 'N/A')}°", s, _status(s)
-    ))
+    actual_tl = f"{angles['trunk_lean_deg']}°" if angles.get("trunk_lean_deg") is not None else "Not detected"
+    criteria.append(CriterionResult("Body Lean (Forward)", "5°–25°", actual_tl, s, _status(s)))
 
     return criteria
 
@@ -132,33 +128,17 @@ def _score_cover(angles: dict) -> list:
 def _score_pull(angles: dict) -> list:
     criteria = []
 
-    # Back knee: 110-140° (weight on back foot)
     s = _score_angle(angles.get("back_knee_angle"), 110, 140)
-    criteria.append(CriterionResult(
-        "Back Knee Bend", "110°–140°",
-        f"{angles.get('back_knee_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Back Knee Bend", "110°–140°", _fmt(angles, "back_knee_angle"), s, _status(s)))
 
-    # Back elbow: 80-130° (arms pulling through)
     s = _score_angle(angles.get("back_elbow_angle"), 80, 130)
-    criteria.append(CriterionResult(
-        "Arms Extension", "80°–130°",
-        f"{angles.get('back_elbow_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Arms Extension", "80°–130°", _fmt(angles, "back_elbow_angle"), s, _status(s)))
 
-    # Hip tilt: some rotation expected (<20°)
     s = _score_tilt(angles.get("hip_tilt_deg"), 20, tolerance=10)
-    criteria.append(CriterionResult(
-        "Hip Rotation", "<20°",
-        f"{angles.get('hip_tilt_deg', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Hip Rotation", "<20°", _fmt(angles, "hip_tilt_deg"), s, _status(s)))
 
-    # Shoulder tilt: <15° for pull
     s = _score_tilt(angles.get("shoulder_tilt_deg"), 15)
-    criteria.append(CriterionResult(
-        "Shoulder Alignment", "<15° tilt",
-        f"{angles.get('shoulder_tilt_deg', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Shoulder Alignment", "<15° tilt", _fmt(angles, "shoulder_tilt_deg"), s, _status(s)))
 
     return criteria
 
@@ -166,33 +146,17 @@ def _score_pull(angles: dict) -> list:
 def _score_sweep(angles: dict) -> list:
     criteria = []
 
-    # Front knee: 80-110° (deep bend, kneeling)
     s = _score_angle(angles.get("front_knee_angle"), 80, 110)
-    criteria.append(CriterionResult(
-        "Front Knee (Deep Bend)", "80°–110°",
-        f"{angles.get('front_knee_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Front Knee (Deep Bend)", "80°–110°", _fmt(angles, "front_knee_angle"), s, _status(s)))
 
-    # Back knee: 90-130°
     s = _score_angle(angles.get("back_knee_angle"), 90, 130)
-    criteria.append(CriterionResult(
-        "Back Knee Position", "90°–130°",
-        f"{angles.get('back_knee_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Back Knee Position", "90°–130°", _fmt(angles, "back_knee_angle"), s, _status(s)))
 
-    # Front elbow: 90-140° (bat swinging horizontal)
     s = _score_angle(angles.get("front_elbow_angle"), 90, 140)
-    criteria.append(CriterionResult(
-        "Bat Swing Plane", "90°–140°",
-        f"{angles.get('front_elbow_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Bat Swing Plane", "90°–140°", _fmt(angles, "front_elbow_angle"), s, _status(s)))
 
-    # Body lean: 20-45° (leaning forward/down for sweep)
     s = _score_angle(angles.get("trunk_lean_deg"), 20, 45)
-    criteria.append(CriterionResult(
-        "Forward Body Lean", "20°–45°",
-        f"{angles.get('trunk_lean_deg', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Forward Body Lean", "20°–45°", _fmt(angles, "trunk_lean_deg"), s, _status(s)))
 
     return criteria
 
@@ -200,58 +164,32 @@ def _score_sweep(angles: dict) -> list:
 def _score_defense(angles: dict) -> list:
     criteria = []
 
-    # Front knee: 140-175° (mostly straight, upright)
     s = _score_angle(angles.get("front_knee_angle"), 140, 175)
-    criteria.append(CriterionResult(
-        "Upright Stance (Knee)", "140°–175°",
-        f"{angles.get('front_knee_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Upright Stance (Knee)", "140°–175°", _fmt(angles, "front_knee_angle"), s, _status(s)))
 
-    # Front elbow: 100-150° (soft hands)
     s = _score_angle(angles.get("front_elbow_angle"), 100, 150)
-    criteria.append(CriterionResult(
-        "Soft Hands (Elbow)", "100°–150°",
-        f"{angles.get('front_elbow_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Soft Hands (Elbow)", "100°–150°", _fmt(angles, "front_elbow_angle"), s, _status(s)))
 
-    # Shoulder tilt: very level (<8°)
     s = _score_tilt(angles.get("shoulder_tilt_deg"), 8)
-    criteria.append(CriterionResult(
-        "Shoulder Level", "<8° tilt",
-        f"{angles.get('shoulder_tilt_deg', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Shoulder Level", "<8° tilt", _fmt(angles, "shoulder_tilt_deg"), s, _status(s)))
 
-    # Trunk lean: minimal lean 0-15°
     s = _score_angle(angles.get("trunk_lean_deg"), 0, 15)
-    criteria.append(CriterionResult(
-        "Upright Body", "0°–15° lean",
-        f"{angles.get('trunk_lean_deg', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Upright Body", "0°–15° lean", _fmt(angles, "trunk_lean_deg"), s, _status(s)))
 
     return criteria
 
 
 def _score_hook(angles: dict) -> list:
-    # Hook is similar to pull but more aggressive
     criteria = []
 
     s = _score_angle(angles.get("back_knee_angle"), 100, 135)
-    criteria.append(CriterionResult(
-        "Back Knee Bend", "100°–135°",
-        f"{angles.get('back_knee_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Back Knee Bend", "100°–135°", _fmt(angles, "back_knee_angle"), s, _status(s)))
 
     s = _score_angle(angles.get("back_elbow_angle"), 70, 120)
-    criteria.append(CriterionResult(
-        "Arms Extension", "70°–120°",
-        f"{angles.get('back_elbow_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Arms Extension", "70°–120°", _fmt(angles, "back_elbow_angle"), s, _status(s)))
 
     s = _score_tilt(angles.get("shoulder_tilt_deg"), 20)
-    criteria.append(CriterionResult(
-        "Shoulder Rotation", "<20°",
-        f"{angles.get('shoulder_tilt_deg', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Shoulder Rotation", "<20°", _fmt(angles, "shoulder_tilt_deg"), s, _status(s)))
 
     return criteria
 
@@ -260,47 +198,28 @@ def _score_flick(angles: dict) -> list:
     criteria = []
 
     s = _score_angle(angles.get("front_knee_angle"), 120, 150)
-    criteria.append(CriterionResult(
-        "Front Knee Bend", "120°–150°",
-        f"{angles.get('front_knee_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Front Knee Bend", "120°–150°", _fmt(angles, "front_knee_angle"), s, _status(s)))
 
     s = _score_angle(angles.get("front_elbow_angle"), 90, 140)
-    criteria.append(CriterionResult(
-        "Wrist Flick (Elbow)", "90°–140°",
-        f"{angles.get('front_elbow_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Wrist Flick (Elbow)", "90°–140°", _fmt(angles, "front_elbow_angle"), s, _status(s)))
 
     s = _score_tilt(angles.get("hip_tilt_deg"), 15)
-    criteria.append(CriterionResult(
-        "Hip Rotation", "<15°",
-        f"{angles.get('hip_tilt_deg', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Hip Rotation", "<15°", _fmt(angles, "hip_tilt_deg"), s, _status(s)))
 
     return criteria
 
 
 def _score_generic(angles: dict) -> list:
-    """Generic rules for shots without specific definitions."""
     criteria = []
 
     s = _score_angle(angles.get("front_knee_angle"), 120, 160)
-    criteria.append(CriterionResult(
-        "Front Knee Position", "120°–160°",
-        f"{angles.get('front_knee_angle', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Front Knee Position", "120°–160°", _fmt(angles, "front_knee_angle"), s, _status(s)))
 
     s = _score_tilt(angles.get("shoulder_tilt_deg"), 15)
-    criteria.append(CriterionResult(
-        "Shoulder Alignment", "<15° tilt",
-        f"{angles.get('shoulder_tilt_deg', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Shoulder Alignment", "<15° tilt", _fmt(angles, "shoulder_tilt_deg"), s, _status(s)))
 
     s = _score_angle(angles.get("trunk_lean_deg"), 0, 30)
-    criteria.append(CriterionResult(
-        "Body Balance", "0°–30° lean",
-        f"{angles.get('trunk_lean_deg', 'N/A')}°", s, _status(s)
-    ))
+    criteria.append(CriterionResult("Body Balance", "0°–30° lean", _fmt(angles, "trunk_lean_deg"), s, _status(s)))
 
     return criteria
 
