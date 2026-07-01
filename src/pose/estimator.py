@@ -15,6 +15,7 @@ Landmark indices used for cricket (MediaPipe numbering):
 """
 
 import cv2
+import math
 import numpy as np
 import mediapipe as mp
 
@@ -74,38 +75,63 @@ def run_pose_on_frames(bgr_frames: list) -> list:
 
 def draw_skeleton(bgr_frame: np.ndarray, keypoints: dict) -> np.ndarray:
     """
-    Draw MediaPipe pose skeleton on a single BGR frame.
-
-    Args:
-        bgr_frame:  Original BGR numpy frame.
-        keypoints:  Dict from run_pose_on_frames (or None → returns frame unchanged).
-
-    Returns:
-        Annotated BGR frame (copy of original).
+    Draw only the 13 cricket-relevant body joints and their connections.
+    Skips all face landmarks (eyes, ears, mouth etc.)
     """
     if keypoints is None:
         return bgr_frame.copy()
 
-    mp_pose    = mp.solutions.pose
-    mp_drawing = mp.solutions.drawing_utils
-    mp_styles  = mp.solutions.drawing_styles
-
-    # Reconstruct a NormalizedLandmarkList so mp_drawing can use it
-    from mediapipe.framework.formats import landmark_pb2
-    landmark_list = landmark_pb2.NormalizedLandmarkList()
-    for i in range(33):
-        lm = landmark_list.landmark.add()
-        if i in keypoints:
-            lm.x, lm.y, lm.z, lm.visibility = keypoints[i]
-        # else leave as 0,0,0,0
-
     annotated = bgr_frame.copy()
-    mp_drawing.draw_landmarks(
-        annotated,
-        landmark_list,
-        mp_pose.POSE_CONNECTIONS,
-        landmark_drawing_spec=mp_styles.get_default_pose_landmarks_style(),
-    )
+    h, w = annotated.shape[:2]
+
+    # Only draw connections between cricket-relevant joints
+    CRICKET_CONNECTIONS = [
+        (11, 12),  # left shoulder — right shoulder
+        (11, 13),  # left shoulder — left elbow
+        (13, 15),  # left elbow — left wrist
+        (12, 14),  # right shoulder — right elbow
+        (14, 16),  # right elbow — right wrist
+        (11, 23),  # left shoulder — left hip
+        (12, 24),  # right shoulder — right hip
+        (23, 24),  # left hip — right hip
+        (23, 25),  # left hip — left knee
+        (25, 27),  # left knee — left ankle
+        (24, 26),  # right hip — right knee
+        (26, 28),  # right knee — right ankle
+    ]
+
+    # Colour scheme: upper body = orange, lower body = cyan, connections = white
+    UPPER_BODY = {11, 12, 13, 14, 15, 16}
+    LOWER_BODY = {23, 24, 25, 26, 27, 28}
+
+    # Draw connections first (so dots appear on top)
+    for (i, j) in CRICKET_CONNECTIONS:
+        if i in keypoints and j in keypoints:
+            xi, yi, _, vi = keypoints[i]
+            xj, yj, _, vj = keypoints[j]
+            if vi > 0.4 and vj > 0.4:
+                pt1 = (int(xi * w), int(yi * h))
+                pt2 = (int(xj * w), int(yj * h))
+                cv2.line(annotated, pt1, pt2, (255, 255, 255), 2, cv2.LINE_AA)
+
+    # Draw joint dots
+    for idx in CRICKET_LANDMARKS:
+        if idx not in keypoints:
+            continue
+        x, y, _, vis = keypoints[idx]
+        if vis < 0.4:
+            continue
+        px, py = int(x * w), int(y * h)
+        color = (0, 165, 255) if idx in UPPER_BODY else (255, 200, 0)  # orange / cyan
+        cv2.circle(annotated, (px, py), 6, color, -1, cv2.LINE_AA)
+        cv2.circle(annotated, (px, py), 6, (255, 255, 255), 1, cv2.LINE_AA)  # white border
+
+    # Draw nose as a small dot to mark head position
+    if 0 in keypoints:
+        x, y, _, vis = keypoints[0]
+        if vis > 0.4:
+            cv2.circle(annotated, (int(x * w), int(y * h)), 4, (200, 200, 200), -1)
+
     return annotated
 
 
@@ -160,3 +186,96 @@ def pose_summary(frames_kp: list) -> dict:
         "avg_keypoints": avg_kp,
         "cricket_joints": cricket_joints,
     }
+
+
+# ── Angle & Cricket Metrics ───────────────────────────────────────────────────
+
+def angle_at_joint(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
+    """
+    Compute angle in degrees at joint B formed by the vectors BA and BC.
+    a, b, c are (x, y) or (x, y, z) arrays — normalised image coordinates.
+    """
+    ba = a[:2] - b[:2]
+    bc = c[:2] - b[:2]
+    denom = np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-8
+    cos_a = np.dot(ba, bc) / denom
+    return math.degrees(math.acos(float(np.clip(cos_a, -1.0, 1.0))))
+
+
+def compute_cricket_angles(avg_kp: dict) -> dict:
+    """
+    Compute biomechanically meaningful angles from averaged keypoints.
+
+    Returns a dict:
+      front_knee_angle    — hip→knee→ankle (left side, front foot for RHB)
+      back_knee_angle     — right hip→knee→ankle (back foot for RHB)
+      front_elbow_angle   — left shoulder→elbow→wrist
+      back_elbow_angle    — right shoulder→elbow→wrist
+      shoulder_tilt_deg   — how many degrees shoulders are tilted (0 = level)
+      hip_tilt_deg        — how many degrees hips are tilted
+      trunk_lean_deg      — angle of torso from vertical
+    Any value is None if required joints were not detected.
+    """
+    def get(idx):
+        return avg_kp.get(idx)
+
+    result = {}
+
+    # Front (left) knee angle — landmark 23 (L-hip), 25 (L-knee), 27 (L-ankle)
+    lhip, lknee, lankle = get(23), get(25), get(27)
+    if all(v is not None for v in [lhip, lknee, lankle]):
+        result["front_knee_angle"] = round(angle_at_joint(lhip, lknee, lankle), 1)
+    else:
+        result["front_knee_angle"] = None
+
+    # Back (right) knee angle — 24, 26, 28
+    rhip, rknee, rankle = get(24), get(26), get(28)
+    if all(v is not None for v in [rhip, rknee, rankle]):
+        result["back_knee_angle"] = round(angle_at_joint(rhip, rknee, rankle), 1)
+    else:
+        result["back_knee_angle"] = None
+
+    # Front (left) elbow angle — 11, 13, 15
+    lshoulder, lelbow, lwrist = get(11), get(13), get(15)
+    if all(v is not None for v in [lshoulder, lelbow, lwrist]):
+        result["front_elbow_angle"] = round(angle_at_joint(lshoulder, lelbow, lwrist), 1)
+    else:
+        result["front_elbow_angle"] = None
+
+    # Back (right) elbow angle — 12, 14, 16
+    rshoulder, relbow, rwrist = get(12), get(14), get(16)
+    if all(v is not None for v in [rshoulder, relbow, rwrist]):
+        result["back_elbow_angle"] = round(angle_at_joint(rshoulder, relbow, rwrist), 1)
+    else:
+        result["back_elbow_angle"] = None
+
+    # Shoulder tilt — difference in y between left and right shoulder
+    if lshoulder is not None and rshoulder is not None:
+        tilt_rad = math.atan2(abs(float(lshoulder[1]) - float(rshoulder[1])),
+                              abs(float(lshoulder[0]) - float(rshoulder[0])) + 1e-8)
+        result["shoulder_tilt_deg"] = round(math.degrees(tilt_rad), 1)
+    else:
+        result["shoulder_tilt_deg"] = None
+
+    # Hip tilt
+    if lhip is not None and rhip is not None:
+        tilt_rad = math.atan2(abs(float(lhip[1]) - float(rhip[1])),
+                              abs(float(lhip[0]) - float(rhip[0])) + 1e-8)
+        result["hip_tilt_deg"] = round(math.degrees(tilt_rad), 1)
+    else:
+        result["hip_tilt_deg"] = None
+
+    # Trunk lean — angle of line from hip-midpoint to shoulder-midpoint from vertical
+    if all(v is not None for v in [lshoulder, rshoulder, lhip, rhip]):
+        sh_mid = (np.array(lshoulder[:2]) + np.array(rshoulder[:2])) / 2
+        hp_mid = (np.array(lhip[:2]) + np.array(rhip[:2])) / 2
+        trunk = sh_mid - hp_mid  # vector pointing up (in image coords y is flipped)
+        # Angle from vertical (0,1) vector
+        vertical = np.array([0.0, -1.0])  # up in image coords
+        denom = np.linalg.norm(trunk) + 1e-8
+        cos_a = np.dot(trunk / denom, vertical)
+        result["trunk_lean_deg"] = round(math.degrees(math.acos(float(np.clip(cos_a, -1, 1)))), 1)
+    else:
+        result["trunk_lean_deg"] = None
+
+    return result
