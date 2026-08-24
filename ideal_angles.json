@@ -1,0 +1,450 @@
+{
+ "_note": "Interquartile range of each joint angle at the impact frame, measured across professional clips of each shot type. 'low'/'high' are the 25th/75th percentiles, so half of real executions of the shot land inside the band.",
+ "_source_splits": [
+  "train",
+  "val"
+ ],
+ "_min_clips_per_range": 8,
+ "classes": {
+  "cover": {
+   "front_knee_angle": {
+    "low": 132.4,
+    "median": 143.5,
+    "high": 158.4,
+    "n": 63
+   },
+   "back_knee_angle": {
+    "low": 136.7,
+    "median": 148.8,
+    "high": 158.6,
+    "n": 63
+   },
+   "front_elbow_angle": {
+    "low": 114.1,
+    "median": 133.5,
+    "high": 148.4,
+    "n": 63
+   },
+   "back_elbow_angle": {
+    "low": 121.7,
+    "median": 147.4,
+    "high": 161.5,
+    "n": 63
+   },
+   "shoulder_tilt_deg": {
+    "low": 13.6,
+    "median": 24.4,
+    "high": 40.6,
+    "n": 63
+   },
+   "hip_tilt_deg": {
+    "low": 5.5,
+    "median": 11.8,
+    "high": 22.6,
+    "n": 63
+   },
+   "trunk_lean_deg": {
+    "low": 19.6,
+    "median": 26.7,
+    "high": 34.4,
+    "n": 63
+   }
+  },
+  "defense": {
+   "front_knee_angle": {
+    "low": 121.7,
+    "median": 143.2,
+    "high": 153.7,
+    "n": 64
+   },
+   "back_knee_angle": {
+    "low": 126.7,
+    "median": 143.7,
+    "high": 156.3,
+    "n": 64
+   },
+   "front_elbow_angle": {
+    "low": 116.0,
+    "median": 135.8,
+    "high": 152.3,
+    "n": 64
+   },
+   "back_elbow_angle": {
+    "low": 127.8,
+    "median": 135.4,
+    "high": 158.2,
+    "n": 64
+   },
+   "shoulder_tilt_deg": {
+    "low": 8.5,
+    "median": 16.9,
+    "high": 31.5,
+    "n": 64
+   },
+   "hip_tilt_deg": {
+    "low": 2.8,
+    "median": 7.3,
+    "high": 16.9,
+    "n": 64
+   },
+   "trunk_lean_deg": {
+    "low": 11.7,
+    "median": 18.9,
+    "high": 22.8,
+    "n": 64
+   }
+  },
+  "flick": {
+   "front_knee_angle": {
+    "low": 142.2,
+    "median": 151.5,
+    "high": 161.6,
+    "n": 65
+   },
+   "back_knee_angle": {
+    "low": 132.0,
+    "median": 146.3,
+    "high": 159.8,
+    "n": 65
+   },
+   "front_elbow_angle": {
+    "low": 111.6,
+    "median": 128.3,
+    "high": 143.8,
+    "n": 65
+   },
+   "back_elbow_angle": {
+    "low": 121.4,
+    "median": 132.2,
+    "high": 147.7,
+    "n": 65
+   },
+   "shoulder_tilt_deg": {
+    "low": 13.6,
+    "median": 19.2,
+    "high": 37.1,
+    "n": 65
+   },
+   "hip_tilt_deg": {
+    "low": 4.5,
+    "median": 11.6,
+    "high": 21.3,
+    "n": 65
+   },
+   "trunk_lean_deg": {
+    "low": 14.4,
+    "median": 25.0,
+    "high": 34.9,
+    "n": 65
+   }
+  },
+  "hook": {
+   "front_knee_angle": {
+    "low": 133.3,
+    "median": 144.2,
+    "high": 154.4,
+    "n": 63
+   },
+   "back_knee_angle": {
+    "low": 128.0,
+    "median": 142.1,
+    "high": 152.9,
+    "n": 63
+   },
+   "front_elbow_angle": {
+    "low": 100.0,
+    "median": 121.4,
+    "high": 142.6,
+    "n": 63
+   },
+   "back_elbow_angle": {
+    "low": 119.8,
+    "median": 131.9,
+    "high": 144.5,
+    "n": 63
+   },
+   "shoulder_tilt_deg": {
+    "low": 12.1,
+    "median": 17.6,
+    "high": 25.1,
+    "n": 63
+   },
+   "hip_tilt_deg": {
+    "low": 3.5,
+    "median": 7.3,
+    "high": 19.3,
+    "n": 63
+   },
+   "trunk_lean_deg": {
+    "low": 5.2,
+    "median": 20.9,
+    "high": 29.3,
+    "n": 63
+   }
+  },
+  "late_cut": {
+   "front_knee_angle": {
+    "low": 119.4,
+    "median": 143.6,
+    "high": 157.9,
+    "n": 61
+   },
+   "back_knee_angle": {
+    "low": 118.3,
+    "median": 147.0,
+    "high": 161.7,
+    "n": 61
+   },
+   "front_elbow_angle": {
+    "low": 113.8,
+    "median": 133.1,
+    "high": 147.9,
+    "n": 61
+   },
+   "back_elbow_angle": {
+    "low": 121.8,
+    "median": 135.3,
+    "high": 152.9,
+    "n": 61
+   },
+   "shoulder_tilt_deg": {
+    "low": 9.3,
+    "median": 15.2,
+    "high": 26.5,
+    "n": 61
+   },
+   "hip_tilt_deg": {
+    "low": 4.3,
+    "median": 9.3,
+    "high": 17.2,
+    "n": 61
+   },
+   "trunk_lean_deg": {
+    "low": 10.8,
+    "median": 20.1,
+    "high": 29.7,
+    "n": 61
+   }
+  },
+  "lofted": {
+   "front_knee_angle": {
+    "low": 137.6,
+    "median": 149.9,
+    "high": 158.8,
+    "n": 65
+   },
+   "back_knee_angle": {
+    "low": 135.3,
+    "median": 145.7,
+    "high": 159.6,
+    "n": 65
+   },
+   "front_elbow_angle": {
+    "low": 104.2,
+    "median": 127.5,
+    "high": 142.7,
+    "n": 65
+   },
+   "back_elbow_angle": {
+    "low": 114.2,
+    "median": 131.3,
+    "high": 148.0,
+    "n": 65
+   },
+   "shoulder_tilt_deg": {
+    "low": 11.9,
+    "median": 31.7,
+    "high": 41.7,
+    "n": 65
+   },
+   "hip_tilt_deg": {
+    "low": 7.1,
+    "median": 15.3,
+    "high": 26.7,
+    "n": 65
+   },
+   "trunk_lean_deg": {
+    "low": 16.0,
+    "median": 24.1,
+    "high": 37.6,
+    "n": 65
+   }
+  },
+  "pull": {
+   "front_knee_angle": {
+    "low": 124.1,
+    "median": 134.0,
+    "high": 154.5,
+    "n": 65
+   },
+   "back_knee_angle": {
+    "low": 119.6,
+    "median": 140.4,
+    "high": 154.1,
+    "n": 65
+   },
+   "front_elbow_angle": {
+    "low": 108.7,
+    "median": 121.7,
+    "high": 140.7,
+    "n": 65
+   },
+   "back_elbow_angle": {
+    "low": 117.4,
+    "median": 132.9,
+    "high": 148.0,
+    "n": 65
+   },
+   "shoulder_tilt_deg": {
+    "low": 9.8,
+    "median": 14.6,
+    "high": 33.4,
+    "n": 65
+   },
+   "hip_tilt_deg": {
+    "low": 4.3,
+    "median": 7.7,
+    "high": 19.0,
+    "n": 65
+   },
+   "trunk_lean_deg": {
+    "low": 7.0,
+    "median": 16.5,
+    "high": 26.1,
+    "n": 65
+   }
+  },
+  "square_cut": {
+   "front_knee_angle": {
+    "low": 135.0,
+    "median": 142.2,
+    "high": 150.0,
+    "n": 65
+   },
+   "back_knee_angle": {
+    "low": 128.5,
+    "median": 145.2,
+    "high": 155.1,
+    "n": 65
+   },
+   "front_elbow_angle": {
+    "low": 112.8,
+    "median": 130.7,
+    "high": 143.2,
+    "n": 65
+   },
+   "back_elbow_angle": {
+    "low": 121.6,
+    "median": 138.2,
+    "high": 151.0,
+    "n": 65
+   },
+   "shoulder_tilt_deg": {
+    "low": 10.4,
+    "median": 21.5,
+    "high": 39.8,
+    "n": 65
+   },
+   "hip_tilt_deg": {
+    "low": 3.8,
+    "median": 8.8,
+    "high": 25.5,
+    "n": 65
+   },
+   "trunk_lean_deg": {
+    "low": 13.7,
+    "median": 21.7,
+    "high": 32.9,
+    "n": 65
+   }
+  },
+  "straight": {
+   "front_knee_angle": {
+    "low": 126.0,
+    "median": 144.4,
+    "high": 153.7,
+    "n": 65
+   },
+   "back_knee_angle": {
+    "low": 134.8,
+    "median": 146.0,
+    "high": 152.1,
+    "n": 65
+   },
+   "front_elbow_angle": {
+    "low": 99.2,
+    "median": 122.0,
+    "high": 136.6,
+    "n": 65
+   },
+   "back_elbow_angle": {
+    "low": 121.3,
+    "median": 136.5,
+    "high": 152.1,
+    "n": 65
+   },
+   "shoulder_tilt_deg": {
+    "low": 9.6,
+    "median": 19.2,
+    "high": 44.1,
+    "n": 65
+   },
+   "hip_tilt_deg": {
+    "low": 7.1,
+    "median": 11.8,
+    "high": 22.2,
+    "n": 65
+   },
+   "trunk_lean_deg": {
+    "low": 11.6,
+    "median": 25.7,
+    "high": 35.7,
+    "n": 65
+   }
+  },
+  "sweep": {
+   "front_knee_angle": {
+    "low": 115.8,
+    "median": 139.0,
+    "high": 152.1,
+    "n": 63
+   },
+   "back_knee_angle": {
+    "low": 118.2,
+    "median": 137.9,
+    "high": 156.8,
+    "n": 63
+   },
+   "front_elbow_angle": {
+    "low": 121.0,
+    "median": 136.1,
+    "high": 149.4,
+    "n": 63
+   },
+   "back_elbow_angle": {
+    "low": 121.4,
+    "median": 137.4,
+    "high": 151.1,
+    "n": 63
+   },
+   "shoulder_tilt_deg": {
+    "low": 8.3,
+    "median": 15.1,
+    "high": 25.2,
+    "n": 63
+   },
+   "hip_tilt_deg": {
+    "low": 4.1,
+    "median": 8.3,
+    "high": 15.7,
+    "n": 63
+   },
+   "trunk_lean_deg": {
+    "low": 8.6,
+    "median": 13.8,
+    "high": 22.2,
+    "n": 62
+   }
+  }
+ }
+}

@@ -1,4 +1,14 @@
+[theme]
+base = "dark"
+primaryColor = "#22D3EE"
+backgroundColor = "#0A0E14"
+secondaryBackgroundColor = "#121821"
+textColor = "#F1F5F9"
+font = "sans serif"
+
 [server]
 enableXsrfProtection = false
 enableCORS = false
-maxUploadSize = 3
+# In MB. Was 3, which rejected most real clips — data/lofted/video1.mp4 alone
+# is 2.5 MB and a 10-second broadcast clip at 720p is comfortably past 3.
+maxUploadSize = 300

@@ -26,6 +26,16 @@ data/reference_shots/*.mov
 *.h5
 !model_weights.h5
 
+# Large datasets / model weights / generated artifacts (not source)
+/data/
+/data_backup_multiperson/
+/temp_hf_data/
+/features/
+/trained_heads/
+/verification/
+yolov8*.pt
+pose_landmarker.task
+
 # OS
 .DS_Store
 Thumbs.db
