@@ -1,194 +1,88 @@
-# Project Status - Cricket Shot Quality AI
+# Project Status
 
-## ✅ COMPLETED TASKS
+Last updated: September 2026
 
-### 1. Dataset Setup
-- ✅ Downloaded 50 videos from HuggingFace (rokmr/cricket-shot)
-- ✅ Organized into 10 shot classes (5 videos each)
-- ✅ Converted AVI → MP4 for local playback
-- ✅ Folder structure: `data/{shot_class}/video{1-5}.{avi|mp4}`
+## Where the project stands
 
-**Classes:** cover, defense, flick, hook, late_cut, lofted, pull, square_cut, straight, sweep
+The app is complete and working end to end. Upload a batting clip, filmed
+from the standard broadcast angle, and it returns the predicted shot, a
+skeleton overlay on the correct player, joint angles at impact, a
+whole-shot movement curve compared against professionals, and a quality
+score — all inside a Streamlit web page, no GPU required.
 
----
+This document used to describe a planned RGB+Skeleton attention-fusion
+architecture as the "next step." That plan was tried in several forms
+(a pooled per-frame skeleton branch, then a proper ST-GCN skeleton-graph
+branch) and none of them beat the plain video-only classifier. The
+sections below describe what was actually built and measured, not what
+was originally planned.
 
-### 2. Skeleton Extraction ✅
-- ✅ Implemented batch processing pipeline
-- ✅ Extracted MediaPipe pose keypoints from all 50 videos
-- ✅ Reduced from 33 → **13 cricket-relevant landmarks**
-- ✅ Saved as `.npy` files: `(30 frames, 13 landmarks, 3 coords)`
-- ✅ All 50 skeleton files generated successfully
+## Pipeline (as shipped)
 
-**Format verified:**
-```
-Shape: (30, 13, 3)
-- 30 frames per video
-- 13 landmarks: nose, shoulders, elbows, wrists, hips, knees, ankles
-- 3 coordinates: x, y, z (normalized 0-1)
-```
+1. **Person detection & tracking** — YOLOv8 detects every person in the
+   frame; BoT-SORT tracks them across frames. One track is chosen as the
+   striker per clip, using track length, box height, horizontal position,
+   and aspect ratio, with an explicit rule to reject the wicketkeeper.
+2. **Pose estimation** — MediaPipe Pose (BlazePose) runs on the striker's
+   crop, producing 33 landmarks, reduced to 13 cricket-relevant joints.
+3. **Handedness** — decided by voting across all frames (top-hand wrist
+   height + shoulder depth), not assumed.
+4. **Impact & shot-start frames** — found from wrist-speed: impact is the
+   first prominent local speed peak reaching at least half the clip's
+   overall peak; shot-start is the nearest quiet local minimum before it.
+5. **Joint angles** — computed from MediaPipe's metric 3D world
+   landmarks. 2D image-plane angles were tried first and collapsed to
+   155-177 degrees for every shot on this camera angle, so all angle
+   math uses the 3D landmarks instead.
+6. **Shot classification** — R3D-18 (motion, pretrained on Kinetics-400)
+   and EfficientNetB0 (appearance, pretrained on ImageNet), both frozen,
+   fused through a BiGRU with attention pooling. 62.4% top-1 / 81.2%
+   top-3 on a 250-clip held-out test split.
+7. **Quality scoring** — at impact, each angle is compared to an
+   interquartile range built from 61-65 professional clips per shot type
+   and scored 100 / 60-99 / 0-59 depending on distance from the band.
+   Across the whole shot, the same angles are resampled onto a 25-point
+   timeline from shot-start to impact and plotted against a professional
+   band built the same way.
 
-**Test script:** `test_skeleton_only.py` ✅ WORKING
+## What was tried to push classification accuracy higher, and the result
 
----
+The original plan was to fuse pose/skeleton information into the
+classifier, expecting a meaningful accuracy gain. Seven different
+approaches were tried and measured; every one of them was flat or
+negative against the 62.4% baseline:
 
-### 3. Landmark Justification 📄
-**Document:** `LANDMARK_JUSTIFICATION.md`
+| Approach | Result vs. baseline |
+|---|---|
+| Pooled per-frame skeleton features, fused (4 variants) | -4.0 to +3.6 points |
+| ST-GCN (skeleton graph convolution network), fused | -0.8 points |
+| Class-weighted retraining | +0.0 (dataset was already perfectly balanced, 125 clips/class) |
+| Ensembling two independently seeded models | +0.0 |
+| Multi-window inference (averaging predictions over several clip windows) | -3.6 points (real loss) |
+| Partial EfficientNetB0 backbone fine-tuning | -7.2 points (overfit: 83.2% train vs. 52-53% val) |
 
-**Proof for sir:** Shows why 20 landmarks are redundant
-- ❌ Face landmarks (eyes, ears, mouth): Not needed for body mechanics
-- ❌ Finger landmarks: Cricket grip analysis not part of this project
-- ❌ Foot detail (heel, toe): Ankle position sufficient for balance
-- ✅ 13 selected: Cover all cricket biomechanics (stance, rotation, follow-through)
+The consistent conclusion across all seven independent attempts: the
+1250-clip training set is the binding constraint on accuracy, not the
+model architecture. More data would very likely help; none of the
+architectural changes tried did. Full experiment details, methodology,
+and honest failure analysis for each are in
+[`PROGRESS_REPORT.md`](PROGRESS_REPORT.md) (Section 11).
 
----
+## Files referenced by old plans that are not part of the shipped pipeline
 
-### 4. Multi-Modal Fusion Model 🔧
-**File:** `src/classifier/fusion_model.py`
+`download_dataset.py`, `convert_to_mp4.py`, `view_skeleton.py`,
+`test_skeleton_only.py`, `test_pipeline.py`,
+`src/pose/skeleton_extractor.py`, and `src/classifier/fusion_model.py`
+are early exploratory scripts from before the striker-tracking and
+3D-angle fixes landed. They still exist in the repo but are not called
+by `app.py` or by any of the current training/derivation scripts. They
+are kept for reference, not deleted, since they document earlier
+approaches.
 
-**Architecture:**
-```
-RGB Branch (Visual):
-  EfficientNetB0 → GRU(256) → GRU(128) → 128-dim features
+## What's next
 
-Skeleton Branch (Pose):
-  Dense(128) → LSTM(64) → 64-dim features
-
-Fusion:
-  Attention weights (visual_weight, pose_weight)
-  Weighted combination → Dense(256) → Softmax(10 classes)
-```
-
-**Key function:** `get_weightage(model, rgb_input, skeleton_input)`
-- Returns: (visual_contribution%, pose_contribution%)
-- Example: "RGB: 65%, Skeleton: 35%"
-
-**Document:** `FUSION_ARCHITECTURE.md` - Explains expected accuracy improvement
-
----
-
-### 5. Main Application 🏏
-**File:** `app.py`
-
-**Features:**
-- ✅ Shot classification (10 classes)
-- ✅ Pose estimation with skeleton overlay
-- ✅ Joint angle computation (knee, elbow, shoulder, trunk)
-- ✅ Quality score (0-100) with grade
-- ✅ Per-criterion breakdown
-- ✅ Optional reference video comparison
-
-**Status:** ✅ RUNNING at `http://localhost:8501`
-
----
-
-## 📊 FILES CREATED
-
-### Python Scripts
-```
-app.py                          - Main Streamlit application
-download_dataset.py             - HuggingFace dataset downloader
-convert_to_mp4.py              - AVI → MP4 converter
-view_skeleton.py               - Skeleton viewer utility
-test_skeleton_only.py          - Skeleton format test ✅
-test_pipeline.py               - Full pipeline test (blocked by AppControl)
-```
-
-### Source Code
-```
-src/pose/skeleton_extractor.py  - Batch skeleton extraction
-src/pose/estimator.py           - MediaPipe pose wrapper
-src/classifier/fusion_model.py  - RGB + Skeleton fusion model
-src/utils/video_utils.py        - Video processing utilities
-src/quality/scorer.py           - Quality scoring logic
-```
-
-### Documentation
-```
-LANDMARK_JUSTIFICATION.md       - Proof for 13 landmarks
-FUSION_ARCHITECTURE.md          - Model architecture explanation
-data/README.md                  - Dataset structure
-PROJECT_STATUS.md              - This file
-```
-
-### Data Files (50 videos + 50 skeletons)
-```
-data/
-├── cover/        - 5 videos + 5 .npy skeletons
-├── defense/      - 5 videos + 5 .npy skeletons
-├── flick/        - 5 videos + 5 .npy skeletons
-├── hook/         - 5 videos + 5 .npy skeletons
-├── late_cut/     - 5 videos + 5 .npy skeletons
-├── lofted/       - 5 videos + 5 .npy skeletons
-├── pull/         - 5 videos + 5 .npy skeletons
-├── square_cut/   - 5 videos + 5 .npy skeletons
-├── straight/     - 5 videos + 5 .npy skeletons
-└── sweep/        - 5 videos + 5 .npy skeletons
-```
-
----
-
-## ⚠️ KNOWN ISSUES
-
-### Windows Application Control Blocking TensorFlow DLLs
-**Error:** `An Application Control policy has blocked this file`
-- Affects direct Python testing (`test_pipeline.py`)
-- **WORKAROUND:** Streamlit app works fine! ✅ Running on localhost:8501
-
-**Solution if needed:**
-1. Add exception in Windows Security
-2. Or run from command prompt as administrator
-3. Or whitelist venv folder in antivirus
-
----
-
-## 🎯 WHAT SIR ASKED FOR - ALL COMPLETED
-
-1. ✅ **5 videos per shot class** - Downloaded and organized
-2. ✅ **Skeleton extraction** - All 50 videos processed
-3. ✅ **Store skeletons** - Saved as .npy files
-4. ✅ **Use both RGB + Skeleton** - Fusion model implemented
-5. ✅ **Improve accuracy** - Multi-modal fusion architecture
-6. ✅ **Weightage calculation** - `get_weightage()` function ready
-7. ✅ **Proof for landmarks** - LANDMARK_JUSTIFICATION.md explains redundancy
-
----
-
-## 📱 HOW TO USE
-
-### Run the app:
-```bash
-.\venv\Scripts\streamlit.exe run app.py
-```
-Open: http://localhost:8501
-
-### View skeleton format:
-```bash
-.\venv\Scripts\python.exe test_skeleton_only.py
-```
-
-### Check skeleton files:
-```bash
-.\venv\Scripts\python.exe view_skeleton.py
-```
-
----
-
-## 🔄 NEXT STEPS (if needed)
-
-1. **Train fusion model** with 50 videos + skeletons
-2. **Test weightage** on trained model
-3. **Compare accuracy**: Single RGB vs Multi-modal fusion
-4. **Demonstrate to sir**: Show landmark justification + fusion results
-
----
-
-## 📂 READY FOR DEMO
-
-All files organized and working. The app is live and can classify shots, extract pose, and score quality.
-
-**Key proof documents for sir:**
-- `LANDMARK_JUSTIFICATION.md` - Why 13 landmarks are sufficient
-- `FUSION_ARCHITECTURE.md` - How fusion improves accuracy
-- Working skeleton files in all data folders
-- Live app demonstrating full pipeline
-
+No further architecture changes are planned given the evidence above.
+The remaining honest limitations (shot-prediction accuracy as the system
+ceiling, single camera angle, four shot types still on a generic quality
+rule) are listed in [`README.md`](README.md) and detailed in
+[`PROGRESS_REPORT.md`](PROGRESS_REPORT.md).

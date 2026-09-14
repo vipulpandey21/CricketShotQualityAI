@@ -91,14 +91,19 @@ frame_029.jpg
 Total: **30 images**
 
 **Kaam kya hai?**
-- Video ke **middle 60%** se 30 frames nikale gaye
-- Kyunki shot ki important action middle mein hoti hai
+- **30 consecutive frames from the start** of the video (frame 0
+  se, frame_step=1) — ye exact tareeka hai jaise model train hua tha
 - Ye exact 30 frames **model ko input** jaate hain prediction ke liye
 
 **Detail:**
-- Original video mein 50-150 frames ho sakte hain
-- Hum 20%-80% range se evenly 30 frames select karte hain
-- Start aur end skip karte hain kyunki wahan kuch action nahi hota
+- Pehle "middle 60%" se strided 30 frames nikaale jaate the — ye badal
+  diya gaya kyunki isse model ka input training convention se mismatch
+  ho raha tha aur predictions measurably kharab thi (strided/middle:
+  top-1 32%, top-3 66% vs. consecutive-from-start: top-1 46%, top-3
+  88%, demo clips par tested)
+- Impact aur shot-start frame alag se, wrist-speed se detect kiye
+  jaate hain (05_shot_analysis.json mein) — ye frame-extraction se
+  independent hai, sirf angle/quality analysis ke liye use hota hai
 
 **Size:** ~100KB per frame
 
@@ -162,7 +167,8 @@ skeleton_frame_029.jpg
 Total: **30 images**
 
 **Kaam kya hai?**
-- Har frame pe skeleton drawn hai
+- Har frame pe skeleton drawn hai (striker ka — YOLOv8 + BoT-SORT se
+  identify kiya gaya track, umpire/keeper/non-striker pe nahi)
 - Original frame + skeleton visualization
 - Green lines = body joint connections
 - Colored dots = landmark positions
@@ -203,6 +209,32 @@ Total: **9-25 images** (sirf detected frames)
 - Paper/presentation mein use kar sakte hain
 
 **Size:** ~200KB per frame (double width)
+
+---
+
+### 📄 05_shot_analysis.json
+**Kya hai ye?**
+Final analysis output — jo cheez model predict aur measure karta hai:
+```json
+{
+  "prediction": {"shot": "cover", "confidence": 87.3, "top3": [...]},
+  "impact_frame": 14,
+  "shot_start_frame": 5,
+  "joint_angles_at_impact": {"front_knee": 127.4, ...},
+  "quality_score": 78,
+  "vs_professional_movement": {"front_knee": [...25 points...], ...}
+}
+```
+
+**Kaam kya hai?**
+- Predicted shot aur uska confidence + top-3
+- Impact aur shot-start frame numbers (wrist-speed se detect kiye gaye)
+- Joint angles impact ke moment par (3D world landmarks se calculate)
+- Quality score (professional clips ke against)
+- Whole-shot movement curve ("You vs Professionals") — 25-point
+  resampled timeline, shot-start se impact tak
+
+**Size:** ~5-10KB
 
 ---
 
@@ -269,6 +301,7 @@ data/
 │   │   │   ├── comparison_frame_000.jpg
 │   │   │   ├── comparison_frame_004.jpg
 │   │   │   └── ...
+│   │   ├── 05_shot_analysis.json           ← Prediction, angles, quality, movement curve
 │   │   └── PIPELINE_SUMMARY.txt            ← Complete summary
 │   ├── video2_pipeline/
 │   ├── video3_pipeline/
@@ -298,6 +331,7 @@ data/
   - 1 skeleton keypoints JSON
   - 30 skeleton overlay images
   - 9-25 comparison images (varies)
+  - 1 shot analysis JSON (prediction, angles, quality, movement curve)
   - 1 summary text file
 
 ### Total Project:
@@ -346,22 +380,24 @@ data/
 
 ## ✅ Quality Features
 
-### Batsman-Only Detection
-- ✅ Multi-person detection algorithm
-- ✅ Size-based filtering (batsman bada hota hai)
-- ✅ Position-based filtering (batsman niche frame mein)
-- ✅ Temporal consistency (same person track karna)
-- ✅ Confidence-based filtering
+### Striker-Only Detection
+- ✅ YOLOv8 person detection + BoT-SORT tracking (har person ka poora
+  track banta hai, sirf ek frame nahi)
+- ✅ Track-level scoring: box height, horizontal position, aspect
+  ratio, track length
+- ✅ Explicit keeper-rejection rule (keeper tall/central ho sakta hai,
+  phir bhi reject hota hai)
+- ✅ Verified: 0/416 wrong-player frames across all 10 shot classes
 
 ### Data Quality
-- ✅ 30 frames per video (optimal for model)
-- ✅ Middle 60% extraction (important action capture)
+- ✅ 30 frames per video (consecutive from start, matching training data)
 - ✅ 13 key body landmarks (cricket-specific)
-- ✅ Normalized coordinates (0-1 range)
+- ✅ Angles from 3D world landmarks, not flat 2D
+- ✅ Normalized coordinates (0-1 range) for keypoints
 - ✅ Visibility scores included
 
 ---
 
 **Created by:** Vipul's BTP Project
 **Purpose:** Cricket Shot Quality Assessment using AI
-**Date:** July 2026
+**Last updated:** September 2026

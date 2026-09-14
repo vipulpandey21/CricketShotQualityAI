@@ -1,232 +1,97 @@
-# 🏏 Cricket Shot Quality AI - Quick Reference Card
+# Quick Reference
 
-## 📊 Dataset Overview
-- **Total Videos:** 50 (5 per shot class × 10 classes)
-- **Shot Classes:** cover, defense, flick, hook, late_cut, lofted, pull, square_cut, straight, sweep
-- **Video Format:** MP4
-- **Resolution:** 1280×720
-- **FPS:** 25
+Last updated: September 2026
 
----
+A one-page cheat sheet for the project's real, current numbers and
+methods. For full detail and proofs, see
+[`PROGRESS_REPORT.md`](PROGRESS_REPORT.md).
 
-## 📁 What's in Each Folder?
+## Striker identification
 
-### Direct Files (10 per folder):
-```
-✅ video1.mp4 to video5.mp4                    → Original dataset
-✅ skeleton_video1_overlay.mp4 to video5.mp4   → Visualization videos
-```
+Not size/position filtering on a single frame. YOLOv8 detects every
+person in the clip; BoT-SORT tracks each one across all frames. The
+striker's track is picked using: total frames the track persists, box
+height, horizontal position relative to the crease area, and box aspect
+ratio, with an explicit rule that rejects the wicketkeeper's track even
+when it is tall and central. Verified on 416 sampled frames across all
+10 shot classes: **0 wrong-player frames**.
 
-### Pipeline Folders (5 per folder):
-```
-✅ video1_pipeline/ to video5_pipeline/        → Processing steps
-```
-
----
-
-## 🔄 Processing Pipeline Steps
-
-### Inside each `videoX_pipeline/`:
-
-| File/Folder | Content | Count | Purpose |
-|------------|---------|-------|---------|
-| `00_metadata.json` | Video info | 1 file | Technical specs |
-| `01_extracted_frames/` | Original frames | 30 JPGs | Model input |
-| `02_skeleton_keypoints.json` | Landmark data | 1 file | x,y,z coordinates |
-| `03_skeleton_overlay_frames/` | Skeleton drawn | 30 JPGs | Visualization |
-| `04_comparison_frames/` | Side-by-side | 9-25 JPGs | Quality check |
-| `PIPELINE_SUMMARY.txt` | Summary | 1 file | Human-readable |
-
----
-
-## 🎯 Key Numbers
+## Accuracy numbers (all measured, not estimated)
 
 | Metric | Value |
-|--------|-------|
-| Total Frames Extracted per Video | 30 |
-| Skeleton Landmarks per Frame | 13 |
-| Detection Rate | 20-80% (varies) |
-| Processing Steps per Video | 6 |
-| Total Pipeline Folders | 50 |
-| Total Frame Images Generated | ~9000+ |
+|---|---|
+| Shot classification, top-1 | 62.4% (250-clip held-out test set) |
+| Shot classification, top-3 | 81.2% |
+| Original inherited claim | 94% — did not hold up under a leak-free re-measurement; real number was 57.6% |
+| Striker identification | 0/416 wrong-player frames |
+| Pose detection | 100% on 9 of 10 reference clips |
+| Quality score, pro sweep clip | 10.2 → 76.0 / 100 after fixing the scoring pipeline |
+| Inference speed | ~25s per 8-second clip, CPU only |
 
----
+## Known confusion pattern (real, from the confusion matrix)
 
-## 🦴 13 Skeleton Landmarks
+The classifier over-predicts `flick` for a specific set of shots:
+`defense → flick` (13 of 25 misclassified defense clips), `pull → flick`
+(8 clips), `square_cut → flick` (7 clips). Tested and ruled out as a
+class-imbalance problem (the training set is exactly 125 clips per
+class — perfectly balanced, confirmed programmatically; class-weighted
+retraining changed accuracy by 0.0 points). This is a feature
+confusability problem between visually similar bat-swing motions, not a
+data problem, and none of the seven accuracy techniques tried fixed it.
 
-1. **Nose** (0)
-2. **Left Shoulder** (11)
-3. **Right Shoulder** (12)
-4. **Left Elbow** (13)
-5. **Right Elbow** (14)
-6. **Left Wrist** (15)
-7. **Right Wrist** (16)
-8. **Left Hip** (23)
-9. **Right Hip** (24)
-10. **Left Knee** (25)
-11. **Right Knee** (26)
-12. **Left Ankle** (27)
-13. **Right Ankle** (28)
+## Joint angles
 
----
+Computed from MediaPipe's **metric 3D world landmarks**, not flat 2D
+image coordinates. 2D angles were tried first and read 155-177 degrees
+for nearly every shot on this camera angle — the camera's viewing angle
+flattens true joint geometry in 2D. 3D angles separate cleanly by shot:
+sweep ≈ 127°, defense ≈ 51°, hook ≈ 168° at the front knee.
 
-## 🚀 Model Input Format
+## Impact & shot-start detection
 
-```
-RGB Frames:    (30, 720, 1280, 3)
-Skeleton Data: (30, 13, 3)
-               ↑   ↑   ↑
-               │   │   └─ x, y, z coordinates
-               │   └───── 13 landmarks
-               └───────── 30 frames
-```
+- **Impact frame**: the first local peak in wrist speed that reaches at
+  least 50% of the clip's overall peak speed (not the global maximum,
+  which is often follow-through/recovery motion after the actual shot).
+- **Shot-start frame**: the nearest local minimum in wrist speed before
+  impact that drops below a quiet-motion threshold (tuned to 0.15 by
+  checking actual extracted video frames, not just the numbers).
 
----
+## Movement graph ("You vs Professionals")
 
-## 🎨 Skeleton Visualization
+Each of 7 tracked joint angles is resampled onto a fixed 25-point
+timeline running from shot-start to impact, and plotted against an
+interquartile band built the same way from 51-59 professional clips per
+shot class. This replaced the earlier single-snapshot-at-impact
+comparison.
 
-- **Green Lines:** Body joint connections
-- **Orange Dots:** Upper body landmarks
-- **Cyan Dots:** Lower body landmarks
-- **White Text:** Frame info + detection status
+## Seven accuracy techniques tried, after the 62.4% baseline
 
----
+All flat or negative — full detail in `PROGRESS_REPORT.md` §11.
 
-## ✅ Detection Features
+| Technique | Result |
+|---|---|
+| Pooled skeleton fusion (4 variants) | -4.0 to +3.6 pts |
+| ST-GCN skeleton-graph fusion | -0.8 pts |
+| Class-weighted retrain | +0.0 pts |
+| Ensembling (2 seeds) | +0.0 pts |
+| Multi-window inference | -3.6 pts |
+| Partial EfficientNetB0 fine-tune | -7.2 pts (overfit) |
 
-### Batsman-Only Tracking:
-- ✅ Multi-person detection (up to 5 people)
-- ✅ Size filtering (larger person = batsman)
-- ✅ Position filtering (lower frame = batsman)
-- ✅ Visibility filtering (high confidence)
-- ✅ Temporal consistency (same person tracking)
+**Conclusion**: the 1250-clip dataset is the binding constraint, not
+architecture.
 
-### Results:
-- ❌ Umpire: Filtered out
-- ❌ Fielders: Filtered out
-- ❌ Background people: Filtered out
-- ✅ Batsman: Tracked accurately
+## Shot classes
 
----
+`cover`, `defense`, `flick`, `hook`, `late_cut`, `lofted`, `pull`,
+`square_cut`, `straight`, `sweep`
 
-## 📈 Processing Statistics
+## Honest limitations
 
-### Successful Processing:
-- ✅ All 50 videos processed
-- ✅ All pipeline steps completed
-- ✅ All intermediate outputs saved
-- ✅ Quality verification done
-
-### Detection Rates by Shot Class:
-| Shot Class | Avg Detection Rate |
-|-----------|-------------------|
-| Defense | 60-70% |
-| Straight | 50-60% |
-| Cover | 30-50% |
-| Hook | 40-60% |
-| Late Cut | 30-50% |
-| Others | 30-60% |
-
----
-
-## 🛠️ Technical Stack
-
-- **Pose Detection:** MediaPipe 0.10.35
-- **Model:** Pose Landmarker Heavy
-- **Processing:** OpenCV 5.0
-- **Format:** NumPy arrays, JSON, MP4
-- **Python:** 3.14
-
----
-
-## 📂 Quick Navigation
-
-### To View Original Videos:
-```
-data/{shot_class}/videoX.mp4
-```
-
-### To View Skeleton Overlay:
-```
-data/{shot_class}/skeleton_videoX_overlay.mp4
-```
-
-### To Check Processing Steps:
-```
-data/{shot_class}/videoX_pipeline/
-```
-
-### To See Extracted Frames:
-```
-data/{shot_class}/videoX_pipeline/01_extracted_frames/
-```
-
-### To Check Detection Data:
-```
-data/{shot_class}/videoX_pipeline/02_skeleton_keypoints.json
-```
-
-### To View Comparisons:
-```
-data/{shot_class}/videoX_pipeline/04_comparison_frames/
-```
-
----
-
-## 💼 Sir Ko Presentation Points
-
-### 1. Dataset
-"50 cricket shot videos, 10 different shot types, organized by class"
-
-### 2. Innovation
-"Batsman-only skeleton detection - filters out umpire and fielders automatically"
-
-### 3. Pipeline
-"Complete processing pipeline with 6 steps, all outputs saved for verification"
-
-### 4. Traceability
-"Every frame tracked, every landmark recorded, full transparency"
-
-### 5. Quality
-"Visual comparison images for quality verification, JSON data for analysis"
-
-### 6. Model Ready
-"30 frames per video pre-extracted, ready for model training"
-
----
-
-## 🔍 Troubleshooting
-
-### Low Detection Rate?
-- Check `04_comparison_frames/` to see if batsman is visible
-- Review `PIPELINE_SUMMARY.txt` for detection statistics
-- Examine `02_skeleton_keypoints.json` for confidence scores
-
-### Want to See Specific Frame?
-- Go to `01_extracted_frames/frame_XXX.jpg` for original
-- Go to `03_skeleton_overlay_frames/skeleton_frame_XXX.jpg` for overlay
-
-### Need Technical Details?
-- Check `00_metadata.json` for video specs
-- Read `PIPELINE_SUMMARY.txt` for complete summary
-
----
-
-## ⚡ Quick Stats Summary
-
-```
-Total Data Size: ~3-4 GB
-Video Files: 100 MP4s (50 original + 50 overlay)
-Pipeline Folders: 50
-Frame Images: ~9000+
-JSON Files: 100 (metadata + keypoints)
-Text Summaries: 50
-Processing Time: ~5 minutes per video
-Detection Success: 30-80% per video
-```
-
----
-
-**Last Updated:** July 22, 2026
-**Project:** BTP - Cricket Shot Quality Assessment
-**Developer:** Vipul
+- Quality scoring depends on the predicted shot being correct — a wrong
+  prediction grades against the wrong reference. Warning shown below 60%
+  confidence.
+- One camera angle only (standard broadcast, behind the bowler's arm).
+- `late_cut`, `square_cut`, `lofted`, `straight` still use a generic
+  quality rule, not a shot-specific one.
+- The bundled 50-clip `data/` demo set is never used for a reported
+  accuracy number — it overlaps too heavily with training data.

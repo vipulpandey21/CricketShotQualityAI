@@ -1,273 +1,110 @@
-# Summary for Sir - BTP Project Complete ✅
-
-## Jo Sir Ne Manga Tha - Sab Complete Hai
-
-### 1. ✅ Dataset - Har Shot Ki 5 Videos
-**Status:** Complete - 50 videos total
-
-```
-cover/      → 5 videos ✓
-defense/    → 5 videos ✓
-flick/      → 5 videos ✓
-hook/       → 5 videos ✓
-late_cut/   → 5 videos ✓
-lofted/     → 5 videos ✓
-pull/       → 5 videos ✓
-square_cut/ → 5 videos ✓
-straight/   → 5 videos ✓
-sweep/      → 5 videos ✓
-```
-
-**Source:** HuggingFace dataset (rokmr/cricket-shot)
-
----
-
-### 2. ✅ Skeleton Extraction - Sab Videos Ka Skeleton Store Kiya
-**Status:** Complete - 50 skeleton files (.npy format)
-
-**Format:**
-- Shape: `(30 frames, 13 landmarks, 3 coordinates)`
-- Coordinates: x, y, z (normalized 0-1)
-- 13 landmarks: nose, shoulders, elbows, wrists, hips, knees, ankles
-
-**Verification:** Run `python test_skeleton_only.py` ✅ Working
-
----
-
-### 3. ✅ Landmark Reduction Proof - 33 → 13
-**Document:** `LANDMARK_JUSTIFICATION.md`
-
-**Sir Ko Dikhane Ke Liye - Proof Hai Ki 20 Landmarks Redundant Hai:**
-
-#### ❌ Redundant Landmarks (Not Needed):
-1. **Face (10 landmarks):** eyes, ears, mouth
-   - **Why redundant:** Face doesn't contribute to batting mechanics
-   - Cricket shots depend on body rotation, not facial features
-
-2. **Hands (4 landmarks):** thumb, index, pinky, palm
-   - **Why redundant:** Grip analysis is not part of this project
-   - Wrist position is sufficient for bat swing analysis
-
-3. **Feet (6 landmarks):** heel, toe, foot index
-   - **Why redundant:** Ankle position captures foot placement
-   - Detailed foot anatomy not needed for balance analysis
-
-#### ✅ Selected 13 Landmarks (Cricket-Specific):
-1. **Upper Body (7):** nose, shoulders, elbows, wrists
-   - Captures: bat swing, shoulder rotation, follow-through
-   
-2. **Lower Body (6):** hips, knees, ankles  
-   - Captures: stance, weight transfer, balance
-
-**Result:** Full body mechanics captured with 60% fewer landmarks
-
----
-
-### 4. ✅ Fusion Model - RGB + Skeleton
-**File:** `src/classifier/fusion_model.py`
-
-**Architecture:**
-
-```
-INPUT: RGB Frames (30, 224, 224, 3) + Skeleton (30, 13, 3)
-        ↓                                    ↓
-    RGB Branch                          Skeleton Branch
-    ↓                                    ↓
-EfficientNetB0 (pretrained)         Dense(128) + LSTM(64)
-    ↓                                    ↓
-GRU(256) → GRU(128)                  64-dim features
-    ↓                                    ↓
-128-dim features                         ↓
-        ↓                                    ↓
-        ↓←─────── ATTENTION FUSION ─────────→↓
-                         ↓
-              Weighted Combination
-                         ↓
-                  Dense(256) → Softmax(10)
-                         ↓
-                  SHOT CLASS OUTPUT
-```
-
-**Key Feature - Weightage Calculation:**
-```python
-def get_weightage(model, rgb_input, skeleton_input):
-    """
-    Returns: (visual_contribution%, pose_contribution%)
-    Example: (65%, 35%)
-    """
-```
-
-**Interpretation:**
-- If RGB = 65%, Skeleton = 35%
-- Model relied 65% on visual appearance
-- Model relied 35% on body pose
-
-**Document:** `FUSION_ARCHITECTURE.md` - Detailed explanation
-
----
-
-### 5. ✅ Accuracy Improvement Expected
-**Why Fusion Improves Accuracy:**
-
-**RGB Only Problems:**
-- Similar looking shots confused (cover vs straight)
-- Lighting/camera angle affects accuracy
-- Background clutter reduces features
-
-**RGB + Skeleton Benefits:**
-- RGB: bat position, ball trajectory, field context
-- Skeleton: body mechanics unique to each shot
-- Model learns when to trust RGB vs Skeleton
-
-**Examples:**
-- **Pull vs Hook:** Skeleton shows shoulder rotation difference
-- **Cover vs Straight:** RGB shows bat angle, Skeleton shows weight transfer
-
-**Expected Gain:** 8-12% accuracy improvement
-- Baseline (RGB only): ~60%
-- Fusion (RGB + Skeleton): ~68-72%
-
----
-
-### 6. ✅ Working Application
-**Status:** ✅ Running at `http://localhost:8501`
-
-**Features:**
-1. Upload batting video
-2. Shot classification (10 classes)
-3. Pose estimation with skeleton overlay
-4. Joint angle measurement
-5. Quality score (0-100) with grade
-6. Optional reference video comparison
-
-**How to run:**
-```bash
-.\venv\Scripts\streamlit.exe run app.py
-```
-
----
-
-## 📂 Files Ready for Demo
-
-### Documentation (Sir Ko Dikhane Ke Liye)
-1. ✅ **LANDMARK_JUSTIFICATION.md** - Proof ki 20 landmarks redundant hai
-2. ✅ **FUSION_ARCHITECTURE.md** - Model architecture explanation
-3. ✅ **PROJECT_STATUS.md** - Complete project status
-4. ✅ **SUMMARY_FOR_SIR.md** - This file
-
-### Code Files
-1. ✅ **src/classifier/fusion_model.py** - Multi-modal fusion implementation
-2. ✅ **src/pose/skeleton_extractor.py** - Batch skeleton extraction
-3. ✅ **app.py** - Main Streamlit application
-
-### Demo Scripts
-1. ✅ **test_skeleton_only.py** - Shows skeleton format ✅ WORKING
-2. ✅ **demo_fusion_concept.py** - Explains fusion concept ✅ WORKING
-3. ✅ **view_skeleton.py** - View any skeleton file
-
-### Data Files
-- ✅ 50 videos (5 per class × 10 classes)
-- ✅ 50 skeleton files (paired with videos)
-
----
-
-## 🎯 Sir Ko Kya Dikhana Hai
-
-### 1. Dataset Organization
-```bash
-python demo_fusion_concept.py
-```
-Output shows all 50 videos + 50 skeletons ready ✅
-
-### 2. Skeleton Format
-```bash
-python test_skeleton_only.py
-```
-Shows exact format: (30 frames, 13 landmarks, 3 coords) ✅
-
-### 3. Landmark Justification
-Open: `LANDMARK_JUSTIFICATION.md`
-- Table showing 33 landmarks breakdown
-- Biomechanical proof for each redundant landmark
-- Cricket-specific justification for selected 13
-
-### 4. Fusion Architecture
-Open: `FUSION_ARCHITECTURE.md`
-- Diagram of RGB + Skeleton branches
-- Attention mechanism explanation
-- Weightage calculation method
-- Expected accuracy improvement
-
-### 5. Live Demo
-```bash
-streamlit run app.py
-```
-- Upload any cricket video
-- Shows classification, pose, angles, quality score
-- Live skeleton overlay
-
----
-
-## ⚡ Quick Demo Commands
-
-```bash
-# 1. Show skeleton extraction working
-python test_skeleton_only.py
-
-# 2. Show fusion concept and data ready
-python demo_fusion_concept.py
-
-# 3. Run live app
-streamlit run app.py
-# Then open: http://localhost:8501
-```
-
----
-
-## 📊 Summary Table for Sir
-
-| Requirement | Status | Proof |
-|------------|--------|-------|
-| 5 videos per shot | ✅ Done | 50 videos in data/ folders |
-| Skeleton extraction | ✅ Done | 50 .npy files (30,13,3) |
-| Store skeletons | ✅ Done | Paired with videos |
-| Landmark justification | ✅ Done | LANDMARK_JUSTIFICATION.md |
-| RGB + Skeleton fusion | ✅ Done | fusion_model.py |
-| Weightage calculation | ✅ Done | get_weightage() function |
-| Accuracy improvement | ✅ Explained | FUSION_ARCHITECTURE.md |
-| Working demo | ✅ Running | app.py on localhost:8501 |
-
----
-
-## 🎓 Technical Contributions
-
-1. **Efficient Landmark Selection**
-   - Reduced computation by 60% (33→13 landmarks)
-   - Maintained full body mechanics coverage
-   - Biomechanically justified selection
-
-2. **Multi-Modal Fusion Architecture**
-   - Attention-based fusion layer
-   - Automatic contribution weightage
-   - Interpretable predictions
-
-3. **Complete Pipeline**
-   - Video → Frame extraction
-   - Pose estimation → Skeleton
-   - Fusion model → Classification
-   - Quality scoring → Feedback
-
----
-
-## ✅ PROJECT COMPLETE
-
-All requirements met. Ready for demonstration.
-
-**Next Steps (if needed):**
-1. Train fusion model on 50 samples
-2. Compare RGB-only vs Fusion accuracy
-3. Analyze per-class weightage contributions
-4. Fine-tune attention weights
-
-**Current Status:** All infrastructure ready. Can start training anytime.
-
+# Summary for Sir
+
+Last updated: September 2026
+
+## What the project does
+
+Upload a cricket batting video, filmed from the standard broadcast angle
+behind the bowler's arm. The app finds the striker, tracks their pose
+through the shot, works out what shot they played, and scores their
+technique against professional players — both at the moment of impact
+and across the whole shot as a movement curve. Everything runs in a
+Streamlit web app, no wearable sensors, no GPU.
+
+## Where we started and what was wrong
+
+We began from an existing open-source pipeline. It had three real
+problems:
+
+1. It sometimes drew the pose skeleton on the wrong person — the
+   umpire, the non-striker, or the wicketkeeper — because it picked
+   whoever's bounding box happened to be biggest or most central in a
+   single frame.
+2. Joint angles were averaged across the entire clip, producing
+   physically impossible poses, like a 178-degree knee bend at the same
+   time as a 16-degree elbow bend, because the "impact moment" was never
+   actually located.
+3. Angles were measured in flat 2D image coordinates. On this camera
+   angle, that collapses almost every shot to 155-177 degrees regardless
+   of what the batsman actually did, since the camera's viewing angle
+   flattens the true joint geometry.
+
+## What we changed, and why
+
+- **Striker identification**: added a dedicated YOLOv8 detection +
+  BoT-SORT tracking stage that follows every person across the clip and
+  picks the striker's track using height, position, and how long each
+  track persists, with an explicit rule to reject the keeper. Verified
+  on 416 sampled frames across all 10 shot classes: 0 wrong-player
+  frames.
+- **Impact detection**: instead of averaging the whole clip, we locate
+  the actual impact frame from the first prominent peak in wrist speed,
+  and read angles only at that frame.
+- **3D angles**: switched from 2D image-plane landmarks to MediaPipe's
+  metric 3D world landmarks for every angle calculation. Angles now
+  separate cleanly by shot type — sweep reads around 127 degrees,
+  defense around 51, hook around 168 — instead of collapsing to the same
+  range every time.
+- **Handedness**: rather than hard-coding a right-handed batsman, we
+  vote across all frames using top-hand grip height and shoulder depth,
+  so left-handers and mirrored footage score correctly.
+- **Movement graph ("you vs professionals")**: originally the app
+  compared technique only at the single impact instant. Per your
+  feedback, we now resample each angle onto a 25-point timeline running
+  from shot-start to impact, and plot it against a band built from
+  professional clips the same way, so the comparison shows the whole
+  shot's movement, not one snapshot.
+- **Accuracy claim correction**: the pipeline we inherited claimed 94%
+  shot-classification accuracy. Re-measuring it under a leak-free
+  protocol, after removing corrupted dataset files and an overlapping
+  demo set, showed the real number was 57.6%. We rebuilt the classifier
+  as a fusion of R3D-18 (motion) and EfficientNetB0 (appearance) and
+  reached 62.4% top-1, 81.2% top-3, on a genuinely held-out 250-clip
+  test split.
+
+## What we tried after that, to push accuracy further
+
+Once the 62.4% baseline was solid, we tested whether adding skeleton
+information could raise it further, since that was the original plan.
+We tried seven separate techniques:
+
+1. Four different ways of pooling per-frame skeleton features into the
+   classifier — results ranged from -4.0 to +3.6 points.
+2. A proper skeleton-graph network (ST-GCN), which models the joints and
+   their physical connections as a graph rather than a flat feature
+   vector. Standalone, it reached 17.7% (a real improvement from a
+   broken first attempt that scored 10%, caused by undetected frames
+   being read as valid zero-value poses — traced and fixed). Fused with
+   the main classifier, it cost 0.8 points rather than adding anything.
+3. Class-weighted retraining — no change, because the training set
+   turned out to already be perfectly balanced at 125 clips per class.
+4. Ensembling two independently trained models — no change.
+5. Averaging predictions across multiple time windows of each clip —
+   this actually hurt accuracy by 3.6 points.
+6. Partially unfreezing and fine-tuning the EfficientNetB0 backbone —
+   this overfit badly (83.2% training accuracy against 52-53% validation
+   accuracy) and lost 7.2 points.
+
+Every one of the seven came back flat or negative. Taken together, they
+point at the same conclusion: the training set, 1250 clips across 10
+classes, is the actual limit on accuracy, not the model architecture.
+Given more labeled clips, the fusion approach would likely help; on the
+current dataset size, it does not.
+
+## Honest state of the system today
+
+- Shot classification: 62.4% top-1, 81.2% top-3.
+- Since quality scoring depends on which shot was predicted, a wrong
+  prediction grades the batsman against the wrong shot's reference. The
+  app shows a low-confidence warning below 60%.
+- Works reliably on vertical crops, zoomed footage, letterboxed video,
+  and lower-resolution re-uploads — verified directly, not assumed.
+- Runs in about 25 seconds per 8-second clip on CPU.
+- Four of the ten shot types (late cut, square cut, lofted, straight)
+  still use a generic quality rule rather than a shot-specific one,
+  since we did not have professional reference clips for the finer
+  distinctions there.
+
+Full write-up, every defect found with before/after evidence, and the
+complete accuracy investigation are in
+[`PROGRESS_REPORT.md`](PROGRESS_REPORT.md).

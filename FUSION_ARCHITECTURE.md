@@ -1,5 +1,42 @@
 # Multi-Modal Fusion Architecture: RGB + Skeleton
 
+## ⚠️ Actual Result (measured, September 2026)
+
+This document lays out the RGB+skeleton fusion plan as it was designed,
+with an expected accuracy gain of roughly 8-12 points. **That plan was
+built and tested in several forms, and none of them delivered that
+gain.** Recording the real outcome here so this document isn't mistaken
+for the current state of the project:
+
+| Fusion approach tried | Result vs. 62.4% RGB-only baseline |
+|---|---|
+| Pooled per-frame skeleton features (4 variants) | -4.0 to +3.6 points |
+| ST-GCN (skeleton graph convolution network) | -0.8 points |
+
+The ST-GCN version is the closer match to the attention-fusion idea
+below — it models the skeleton as a proper joint graph rather than a
+flat feature vector, same motivation as this document describes. It was
+fully implemented, including finding and fixing a real bug (frames with
+no detected pose were stored as all-zero rows and read by the graph
+convolution as a literal pose at the image corner, affecting about 20%
+of frames) which took its standalone accuracy from 10% to 17.7%. Even
+after that fix, fusing it into the RGB classifier cost 0.8 points rather
+than adding anything, which is inside the noise floor for the test set
+size.
+
+Across every fusion form tried, the result was flat or negative. The
+evidence points at the 1250-clip training set as the real limiting
+factor, not the fusion idea itself — with more labeled data, this
+architecture would likely behave differently. The rest of this document
+is kept as the original design rationale and is accurate as a
+description of what was attempted and why, not as a description of what
+shipped. The shipped classifier is RGB-only (R3D-18 + EfficientNetB0,
+62.4% top-1 / 81.2% top-3). See
+[`PROGRESS_REPORT.md`](PROGRESS_REPORT.md) §11 for full experiment
+detail.
+
+---
+
 ## Overview
 
 This document explains the **multi-modal fusion model** that combines RGB video frames and skeleton keypoints for improved cricket shot classification.

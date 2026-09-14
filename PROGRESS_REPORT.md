@@ -371,6 +371,184 @@ what is downloaded cannot disagree with what was displayed.
   guessing a person.
 - **Four of ten shots** (`late_cut`, `square_cut`, `lofted`, `straight`) still
   fall through to a generic quality scorer and have no shot-specific rules.
-- **The skeleton-fusion experiments used only 400 training clips**, where
-  results proved unreliable. They deserve a retest on the full 1250 before
-  concluding the skeleton cannot help prediction.
+- **The skeleton-fusion question has since been retested on the full 1250
+  clips, and the answer held.** Section 11 covers this: a full ST-GCN
+  skeleton-graph classifier, retrained and fused on the complete dataset,
+  came out 0.8 points below baseline — consistent with the earlier
+  400-clip result, not an artefact of it. Five further, independent
+  accuracy techniques were also tried on the full dataset and every one
+  was flat or negative. The evidence now points firmly at dataset size
+  as the limiting factor, not the skeleton or the architecture.
+
+---
+
+## 10. Movement graph — "You vs Professionals" across the whole shot
+
+The quality score originally compared a batsman against professionals at
+a single instant: the impact frame. The supervisor's feedback was that a
+cricket shot is a movement, not a pose, and the comparison should show
+that.
+
+**What changed.** Two new pieces of detection were needed before a
+movement comparison was possible:
+
+- **Shot-start frame.** Impact was already detected (the first wrist-speed
+  peak reaching at least half the clip's overall peak). Shot-start needed
+  a different rule: the nearest local minimum in wrist speed *before*
+  impact that drops below a quiet-motion threshold. Two simpler rules were
+  tried first and rejected after checking the actual video frames they
+  picked, not just the numbers — a fixed-offset rule and a global-minimum
+  rule both grabbed frames that were visibly mid-backswing, not the true
+  stillness before the shot begins. The threshold was tuned by eye against
+  extracted frames: 0.2 was too early, 0.12 caught backswing motion, 0.15
+  consistently landed on the quiet moment.
+- **Whole-shot resampling.** Seven tracked joint angles are read across
+  every frame from shot-start to impact, then resampled onto a fixed
+  25-point timeline so shots of different lengths can be compared on the
+  same axis. Professional reference bands are built the same way, from
+  51-59 clips per shot class, using interquartile ranges at each of the
+  25 points.
+
+**Where it lives.** `src/pose/estimator.py` (shot-start detection),
+`src/pose/shot_curve.py` (resampling and curve construction),
+`derive_angle_curves.py` (builds the professional reference bands from
+already-cached pose features, no new video processing required), and
+`src/pipeline/builder.py` (wires the curve into every clip's
+`05_shot_analysis.json`). The app shows this as a new "Shot movement"
+section with an SVG line chart per joint, the user's curve against the
+professional band.
+
+**Validation.** Checked by eye on real clips before shipping — the curve
+shapes matched what the joint was actually doing across the shot (for
+example, front-knee angle opening steadily from shot-start through
+impact on a cover drive), and the shot-start frame selected for several
+test clips was visually confirmed to be the stance/backswing-start
+moment, not mid-swing.
+
+---
+
+## 11. Further accuracy investigation (after the movement graph shipped)
+
+With the movement graph working, the next question was the one the
+project's stated goal keeps coming back to: can shot-prediction accuracy
+be pushed above 62.4%. Seven techniques were tried in total across two
+rounds — the four skeleton-fusion forms in Section 4, and five more
+described here — all measured honestly, including the ones that made
+things worse.
+
+### 11.1 ST-GCN (skeleton graph convolution network)
+
+**Why.** The four earlier skeleton-fusion attempts (Section 4) pooled
+per-frame skeleton features into a flat vector, discarding the joints'
+physical connectivity. A graph convolution network keeps that structure:
+each joint is a graph node, bones are edges, and the network learns
+directly over that graph.
+
+**Method.** 13 joints, a symmetric-normalised adjacency matrix (the
+standard Kipf & Welling GCN formulation), a custom Keras `GraphConv`
+layer combining fixed-adjacency aggregation with a learned channel mix,
+stacked with temporal convolution blocks.
+
+**A real bug, found and fixed.** The first model collapsed to predicting
+one class 84% of the time (10% val top-1, chance level). Root cause:
+`cache_pose_features.py` writes an all-zero row for any frame where the
+striker wasn't detected. On average 20.4% of frames per clip are
+all-zero, and the graph convolution was reading `(0,0,0)` as a literal
+joint sitting at the image's top-left corner — a fake pose fed into the
+network on one in five frames. Fixed with `fill_gaps()`, which linearly
+interpolates through the zero frames per joint per clip, and the model
+was cut to about 9,000 parameters to fight overfitting on the smaller
+subset it was first tested on.
+
+**Result.** Standalone test top-1 improved from 10% to 17.7% (top-3
+41.1%) — a genuine, verified fix, and proof the bug was real. Still far
+below the 62.4% RGB baseline on its own. Fused as an additional embedding
+into the main r3d18+EfficientNetB0 classifier and retrained on the full
+1250-clip dataset: **-0.8 points**, inside the noise floor for a 250-clip
+test set. No gain.
+
+### 11.2 Class-weighted retraining
+
+**Why.** The confusion matrix showed a clear pattern — the model
+over-predicts `flick` (defense→flick 13 of 25 misclassified defense
+clips, pull→flick 8, square_cut→flick 7). Class imbalance was the
+working hypothesis.
+
+**Method.** Inverse-frequency class weights passed to
+`model.fit(class_weight=...)`, same architecture, full 1250-clip training
+set.
+
+**A bug caught before it was reported.** The first run's data loader
+matched an existing 400-clip subset cache instead of the full dataset,
+because a suffix argument used for a different, unrelated experiment
+happened to match. It was caught, not assumed correct: every computed
+class weight printed as exactly 1.00 (suspicious on its own), and the
+resulting accuracy (48.0%) was implausibly far below baseline. Traced and
+fixed by forcing the loader onto the full 1250-clip cache.
+
+**Result (corrected run).** The training set turned out to be exactly
+125 clips per class — already perfectly balanced, confirmed
+programmatically. Inverse-frequency weighting is therefore a mathematical
+no-op. Result: 62.4%/81.2%, identical to baseline. **+0.0 points.** The
+flick over-prediction is a feature-confusability problem between shots
+with visually similar bat-swing motion, not a class-frequency problem —
+this experiment disproves the original hypothesis rather than assuming
+it.
+
+### 11.3 Ensembling (two independently seeded models)
+
+**Why.** Averaging predictions from two independently trained models is
+normally a reliable, low-cost way to pick up a few points.
+
+**Method.** A second r3d18+EfficientNetB0 head, identical architecture
+and full data, trained from a different random seed. Softmax outputs of
+both models averaged on the 250-clip test set.
+
+**Result.** **+0.0 points.** The two seeds converge to near-identical
+decision boundaries on this dataset size, so there was nothing for
+averaging to correct.
+
+### 11.4 Multi-window inference
+
+**Why.** Rather than reading only 30 consecutive frames from the start
+of a clip, average predictions across several different start offsets
+within the same clip, hoping to smooth out noise from any single
+window's framing.
+
+**Result.** **-3.6 points**, a real loss rather than noise. The model was
+trained on frames 0-29 specifically; windows starting later feed it a
+distribution of input it never saw during training, and the average
+pulls the correct prediction down rather than reinforcing it.
+
+### 11.5 Partial EfficientNetB0 backbone fine-tuning
+
+**Why.** Both backbones are used frozen, as fixed feature extractors.
+Unfreezing the last block of EfficientNetB0 and fine-tuning it on the
+cricket dataset was the remaining lever that hadn't been tried.
+
+**Result.** **-7.2 points**, and a clear overfitting signature: 83.2%
+training accuracy against 52-53% validation accuracy. On a 1250-clip
+dataset, a partially unfrozen ImageNet backbone memorises the training
+clips rather than learning anything that generalises.
+
+### 11.6 Conclusion across all seven techniques
+
+| Technique | Result vs. 62.4% baseline |
+|---|---|
+| Pooled skeleton fusion (4 variants, Section 4) | -4.0 to +3.6 pts |
+| ST-GCN skeleton-graph fusion | -0.8 pts |
+| Class-weighted retraining | +0.0 pts |
+| Ensembling (2 seeds) | +0.0 pts |
+| Multi-window inference | -3.6 pts |
+| Partial EfficientNetB0 fine-tuning | -7.2 pts (overfit) |
+
+Every technique tried after the 62.4% baseline was established came back
+flat or negative. Taken individually, any one of these could be put down
+to that specific method not suiting this problem. Taken together, across
+seven independently designed attempts spanning architecture changes,
+training strategy, and inference strategy, the pattern is the dataset
+itself: 1250 clips across 10 classes is not enough for these techniques
+to show the gains they would be expected to show on a larger dataset.
+This is the honest, final conclusion of the accuracy investigation —
+recorded here so it is not re-attempted from scratch in the same form
+without new data.
