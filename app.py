@@ -381,6 +381,12 @@ GRADE_BADGE = {
 def load_model():
     if not TF_AVAILABLE:
         return None
+    # Building EfficientNetB0 a second time in the same process (e.g. after
+    # the r3d18+effnet predictor already built its own copy) can leave Keras
+    # 3's internal layer-naming counter out of sync, raising a spurious
+    # "the name 'rescaling' is used 2 times" error. Resetting it first is
+    # the standard fix and is safe — it doesn't touch already-built models.
+    keras.backend.clear_session()
     base = EfficientNetB0(include_top=False, weights="imagenet", input_shape=(224, 224, 3))
     base.trainable = False
     model = models.Sequential([
@@ -565,7 +571,10 @@ if not TF_AVAILABLE:
     st.warning("TensorFlow not available — showing skeleton extraction only. "
                "Shot classification and quality scoring are disabled.", icon=":material/warning:")
 
-model = load_model() if TF_AVAILABLE else None
+# Not loaded eagerly here — the real classifier is the r3d18+effnet predictor
+# (loaded inside analyse()); this fallback model is only built lazily, where
+# it's actually used (analyse()'s fallback path, and the reference-clip
+# comparison feature below), so a normal run never pays for it.
 
 # ══════════════════════════════════════════════════════════════════════════════
 # UPLOAD
@@ -672,7 +681,7 @@ def analyse(name: str, size: int, model_ready: bool, _video_path: str):
 
 with st.spinner("Analysing video… (striker tracking ~40s, "
                 "shot classification ~5s)"):
-    pipe = analyse(source_name, source_size, model is not None, p1)
+    pipe = analyse(source_name, source_size, TF_AVAILABLE, p1)
 
 frames1 = pipe["_clf_frames"]
 raw_frames = pipe["_frames"]
@@ -1020,6 +1029,7 @@ if v2:
         st.video(v2)
 
     with st.spinner("Analysing reference video…"):
+        model = load_model()
         frames2 = extract_frames(p2, n_frames=30)
         shot2, conf2, _ = predict(model, frames2)
         f1 = get_features(model, frames1)
