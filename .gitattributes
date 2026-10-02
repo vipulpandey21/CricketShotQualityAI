@@ -1,0 +1,3 @@
+# Never rewrite line endings inside PDFs: CRLF conversion shifts the byte
+# offsets they depend on and corrupts them on a fresh clone.
+*.pdf binary
