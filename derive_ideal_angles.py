@@ -3,12 +3,14 @@ derive_ideal_angles.py
 Work out what professional batsmen actually do at impact, per shot type,
 from the cached pose features — instead of guessing the ideal ranges.
 
-Why: src/quality/scorer.py's ideal ranges are hand-written estimates, and
-some are demonstrably wrong. For `hook` it wants "Arms Extension 70-120",
-but a hook is played with the arms extended — data/hook/video1.mp4 measures
-179 at impact — so a well-played hook is marked down. Four of the ten shots
-(late_cut, square_cut, lofted, straight) have no rules at all and fall
-through to a generic scorer.
+Why (as of when this script was written): src/quality/scorer.py's ideal
+ranges were hand-written estimates, and one looked wrong. For `hook` it
+wanted "Arms Extension 70-120", but a hook is played with the arms
+extended — data/hook/video1.mp4 measured 179 at impact (that clip turned
+out to be a 2D-angle bug elsewhere, not a bad range; see scorer.py). Four
+of the ten shots (late_cut, square_cut, lofted, straight) had no rules at
+all and fell through to a generic scorer. All ten now have their own
+rules, with bounds taken from the ranges this script derives.
 
 Method: for every clip of a class, find the impact frame (peak wrist
 movement, measured in the striker's own box coordinates so camera motion and

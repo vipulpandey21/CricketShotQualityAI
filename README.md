@@ -295,9 +295,10 @@ section with an SVG line chart per joint.
 - **The 50-clip demo bundle (`data/`) is never used for a reported
   accuracy number.** It overlaps heavily with the training set (see
   above) — using it would silently inflate the number.
-- **Four of ten shot types** (`late_cut`, `square_cut`, `lofted`,
-  `straight`) still fall back to a generic quality rule rather than a
-  shot-specific one.
+- **Scores are not validated against coaches.** All 10 shot types have
+  their own scoring ranges, measured from professional clips, which
+  makes them defensible, but no coach has confirmed that the resulting
+  score matches their own judgement.
 
 ## Credits
 
