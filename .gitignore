@@ -25,16 +25,24 @@ data/reference_shots/*.avi
 data/reference_shots/*.mov
 *.h5
 !model_weights.h5
+!trained_heads/vid_r3d18_effnet.weights.h5
 
 # Large datasets / model weights / generated artifacts (not source)
-/data/
+# data/: only the 5 sample clips per shot (the app's sample dropdown); not the
+# old *_pipeline folders or overlay videos
+/data/*
+!/data/*/
+/data/*/*
+!/data/*/video[1-5].mp4
 /data_backup_multiperson/
 /temp_hf_data/
 /features/
-/trained_heads/
+# trained_heads/: only the shipped classifier head the app loads
+/trained_heads/*
+!/trained_heads/vid_r3d18_effnet.weights.h5
 /verification/
 yolov8*.pt
-pose_landmarker.task
+# pose_landmarker.task is needed at runtime, so it IS tracked
 
 # OS
 .DS_Store
