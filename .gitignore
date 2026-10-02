@@ -42,6 +42,7 @@ data/reference_shots/*.mov
 !/trained_heads/vid_r3d18_effnet.weights.h5
 /verification/
 yolov8*.pt
+!yolov8s.pt
 # pose_landmarker.task is needed at runtime, so it IS tracked
 
 # OS
