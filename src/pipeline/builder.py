@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import time
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -164,6 +165,32 @@ def _open_writer(path, fps, size):
             return writer, codec
         writer.release()
     raise RuntimeError(f"no usable video codec from {VIDEO_CODECS}")
+
+
+def _make_browser_playable(path, codec):
+    """
+    Re-encode an mp4v file to H.264 so the inline player can show it.
+
+    OpenCV's Linux wheels ship without an H.264 encoder, so there the writer
+    falls back to mp4v and st.video renders a blank player. When ffmpeg is
+    installed (the hosted deployment installs it) the file is re-encoded in
+    place. A no-op on machines where OpenCV already wrote H.264 (e.g. the
+    Windows dev box) or that have no ffmpeg; on any failure the original
+    mp4v file is kept, which is still valid for download.
+    """
+    if codec != "mp4v" or shutil.which("ffmpeg") is None:
+        return
+    tmp = Path(str(path) + ".h264.mp4")
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", str(path),
+             "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",   # x264 needs even sizes
+             "-c:v", "libx264", "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart", str(tmp)],
+            check=True, timeout=180)
+        tmp.replace(path)
+    except Exception:
+        tmp.unlink(missing_ok=True)
 
 
 def _clip_info(video_path: Path) -> dict:
@@ -351,7 +378,7 @@ def build_pipeline(video_path, out_dir, classifier=None, idx_to_class=None,
 
         cmp_path = out_dir / f"comparison_{label}.mp4"
         cmp_w = w * 2 + 8      # matches _side_by_side's 8px divider
-        cmp_writer, _ = _open_writer(cmp_path, OVERLAY_FPS, (cmp_w, h))
+        cmp_writer, cmp_codec = _open_writer(cmp_path, OVERLAY_FPS, (cmp_w, h))
 
         for i, (frame, kp) in enumerate(zip(pose_frames, keypoints)):
             annotated = draw_skeleton(frame, kp) if kp else frame.copy()
@@ -385,6 +412,8 @@ def build_pipeline(video_path, out_dir, classifier=None, idx_to_class=None,
                 cv2.imwrite(str(cmp_dir / f"frame_{i+1:03d}.jpg"), side)
         writer.release()
         cmp_writer.release()
+        _make_browser_playable(vid_path, codec)
+        _make_browser_playable(cmp_path, cmp_codec)
         result["skeleton_video"] = str(vid_path)
         result["comparison_video"] = str(cmp_path)
 
